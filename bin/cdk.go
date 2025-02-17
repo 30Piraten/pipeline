@@ -32,7 +32,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	lambdaFunctionV1 := awslambda.NewFunction(stack, jsii.String("pipelineHandler"), &awslambda.FunctionProps{
 		Runtime: awslambda.Runtime_PROVIDED_AL2(),
 		Handler: jsii.String("bootstrap"),
-		Code:    awslambda.Code_FromAsset(jsii.String("./lambda/pipeline"), &awss3assets.AssetOptions{}),
+		Code:    awslambda.Code_FromAsset(jsii.String("./lambda/"), &awss3assets.AssetOptions{}),
 	})
 
 	// Funtion URL
