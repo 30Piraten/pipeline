@@ -108,10 +108,10 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	})
 
 	// CloudFormation Ouput
-	awscdk.NewCfnOutput(stack, jsii.String("myFunctionUrlOutput"), &awscdk.CfnOutputProps{
+	awscdk.NewCfnOutput(stack, jsii.String("lambdaFunctionURL"), &awscdk.CfnOutputProps{
 		Value: lambdaFunctionURL.Url(),
 	})
-	awscdk.NewCfnOutput(stack, jsii.String("PipelineNameOutput"), &awscdk.CfnOutputProps{
+	awscdk.NewCfnOutput(stack, jsii.String("codePipelineNameOutput"), &awscdk.CfnOutputProps{
 		Value: codePipelineV1.PipelineName(),
 	})
 	awscdk.NewCfnOutput(stack, jsii.String("CodeBuildProjectOuput"), &awscdk.CfnOutputProps{
