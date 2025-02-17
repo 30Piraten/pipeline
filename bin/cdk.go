@@ -59,6 +59,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		log.Fatal("Warning: GITHUB_TOKEN_SECRET variable is not defined.")
 	}
 	secretOptions := &awscdk.SecretsManagerSecretOptions{}
+	githubToken := awscdk.SecretValue_SecretsManager(jsii.String(os.Getenv("GITHUB_TOKEN_SECRET")), secretOptions)
 
 	// CodePipeline Construct
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
@@ -68,10 +69,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 				StageName: jsii.String("Source"),
 				Actions: &[]awscodepipeline.IAction{
 					awscodepipelineactions.NewGitHubSourceAction(&awscodepipelineactions.GitHubSourceActionProps{
-						ActionName: jsii.String(os.Getenv("pipelineSource")),
+						ActionName: jsii.String("pipelineSource"),
 						Owner:      jsii.String(os.Getenv("GITHUB_OWNER")),
 						Repo:       jsii.String(os.Getenv("GITHUB_REPO")),
-						OauthToken: awscdk.SecretValue_SecretsManager(jsii.String(tokenSecret), secretOptions),
+						// OauthToken: awscdk.SecretValue_SecretsManager(jsii.String(tokenSecret), secretOptions),
+						// OauthToken: awscdk.SecretsValue_PlainText(jsii.String(tokenSecret))
+						OauthToken: githubToken,
 						Output:     awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
 					}),
 				},
@@ -132,7 +135,7 @@ func main() {
 
 	app := awscdk.NewApp(nil)
 
-	NewPipelineBuildV1(app, "CdkStack", &PipelineBuildV1Props{
+	NewPipelineBuildV1(app, "CodePipelineCdkStack", &PipelineBuildV1Props{
 		awscdk.StackProps{
 			Env: env(),
 		},
