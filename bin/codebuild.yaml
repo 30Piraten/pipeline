@@ -15,4 +15,14 @@ phases:
 
   post_build:
     commands:
-      - echo Build complete.
+      - echo Building Lambda function...
+      - cd lambda
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bootstrap pipeline.go
+      - chmod +x bootstrap
+      - zip -X lambda_function.zip bootstrap
+      - echo Lambda deployment package created.
+
+artifacts:
+  files:
+    - '**/*'
+  discard-paths: no
