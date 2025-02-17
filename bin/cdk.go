@@ -156,5 +156,4 @@ func env() *awscdk.Environment {
 		Account: jsii.String(accountID),
 		Region:  jsii.String(accountRegion),
 	}
-
 }
