@@ -54,12 +54,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	})
 
 	// Define GitHub token secret
-	tokenSecret := os.Getenv("GITHUB_TOKEN_SECRET")
-	if tokenSecret == "" {
-		log.Fatal("Warning: GITHUB_TOKEN_SECRET variable is not defined.")
-	}
+	// tokenSecret := os.Getenv("GITHUB_TOKEN_SECRET")
+	// if tokenSecret == "" {
+	// 	log.Fatal("Warning: GITHUB_TOKEN_SECRET variable is not defined.")
+	// }
 	secretOptions := &awscdk.SecretsManagerSecretOptions{}
-	githubToken := awscdk.SecretValue_SecretsManager(jsii.String(os.Getenv("GITHUB_TOKEN_SECRET")), secretOptions)
+	// githubToken := awscdk.SecretValue_SecretsManager(jsii.String(os.Getenv("GITHUB_TOKEN_SECRET")), secretOptions)
 
 	// CodePipeline Construct
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
@@ -72,10 +72,9 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 						ActionName: jsii.String("pipelineSource"),
 						Owner:      jsii.String(os.Getenv("GITHUB_OWNER")),
 						Repo:       jsii.String(os.Getenv("GITHUB_REPO")),
-						// OauthToken: awscdk.SecretValue_SecretsManager(jsii.String(tokenSecret), secretOptions),
+						OauthToken: awscdk.SecretValue_SecretsManager(jsii.String("github-token"), secretOptions),
 						// OauthToken: awscdk.SecretsValue_PlainText(jsii.String(tokenSecret))
-						OauthToken: githubToken,
-						Output:     awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
+						Output: awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
 					}),
 				},
 			},
