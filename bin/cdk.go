@@ -68,7 +68,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 				StageName: jsii.String("Source"),
 				Actions: &[]awscodepipeline.IAction{
 					awscodepipelineactions.NewGitHubSourceAction(&awscodepipelineactions.GitHubSourceActionProps{
-						ActionName: jsii.String(os.Getenv("GITHUB_SOURCE")),
+						ActionName: jsii.String(os.Getenv("Github_Source")),
 						Owner:      jsii.String(os.Getenv("GITHUB_OWNER")),
 						Repo:       jsii.String(os.Getenv("GITHUB_REPO")),
 						OauthToken: awscdk.SecretValue_SecretsManager(jsii.String(tokenSecret), secretOptions),
