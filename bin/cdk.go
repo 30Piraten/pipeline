@@ -32,7 +32,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	lambdaFunctionV1 := awslambda.NewFunction(stack, jsii.String("pipelineHandler"), &awslambda.FunctionProps{
 		Runtime: awslambda.Runtime_PROVIDED_AL2(),
 		Handler: jsii.String("bootstrap"),
-		Code:    awslambda.Code_FromAsset(jsii.String("./lib/pipeline"), &awss3assets.AssetOptions{}),
+		Code:    awslambda.Code_FromAsset(jsii.String("./lambda/pipeline"), &awss3assets.AssetOptions{}),
 	})
 
 	// Funtion URL
@@ -56,7 +56,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	// Define GitHub token secret
 	tokenSecret := os.Getenv("GITHUB_TOKEN_SECRET")
 	if tokenSecret == "" {
-		log.Fatal("Error: GITHUB_TOKEN_SECRET variable is not defined.")
+		log.Fatal("Warning: GITHUB_TOKEN_SECRET variable is not defined.")
 	}
 	secretOptions := &awscdk.SecretsManagerSecretOptions{}
 
@@ -92,11 +92,11 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	// CloudWatch Construct
 	metricNamespace := os.Getenv("METRIC_NAMESPACE")
 	if metricNamespace == "" {
-		log.Fatal("Error: METRIC_NAMESPACE variable for CloudWatch is not defined.")
+		log.Fatal("Warning: METRIC_NAMESPACE variable for CloudWatch is not defined.")
 	}
 	metricName := os.Getenv("METRIC_NAME")
 	if metricName == "" {
-		log.Fatal("Error: METRIC_NAME variable for CloudWatch is not defined.")
+		log.Fatal("Warning: METRIC_NAME variable for CloudWatch is not defined.")
 	}
 
 	awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
