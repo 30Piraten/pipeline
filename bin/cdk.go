@@ -9,8 +9,10 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscodebuild"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscodepipeline"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscodepipelineactions"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
 	"github.com/aws/jsii-runtime-go"
 	"github.com/joho/godotenv"
 
@@ -22,11 +24,20 @@ type PipelineBuildV1Props struct {
 }
 
 func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBuildV1Props) awscdk.Stack {
+
 	var sprops awscdk.StackProps
 	if props != nil {
 		sprops = props.StackProps
 	}
 	stack := awscdk.NewStack(scope, &id, &sprops)
+
+	// Get GitHub Owner and Repo from environment variables
+	githubOwner := os.Getenv("GITHUB_OWNER")
+	githubRepo := os.Getenv("GITHUB_REPO")
+
+	if githubOwner == "" || githubRepo == "" {
+		log.Fatal("GITHUB_OWNER and GITHUB_REPO enviroment variables must be declared!")
+	}
 
 	// Define the Lambda function
 	lambdaFunctionV1 := awslambda.NewFunction(stack, jsii.String("pipelineHandler"), &awslambda.FunctionProps{
@@ -40,26 +51,62 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		AuthType: awslambda.FunctionUrlAuthType_AWS_IAM,
 	})
 
+	// Secret Manager definition
+	githubTokenSecret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("GitHubTokenSecret"), jsii.String("github-token"))
+
+	// githubToken := githubTokenSecret.SecretValueFromJson(jsii.String("github-token"))
+
+	// Define IAM role for CodeBuild
+	grantableRole := awsiam.NewRole(stack, jsii.String("CodeBuildRole"), &awsiam.RoleProps{
+		AssumedBy: awsiam.NewServicePrincipal(jsii.String("codebuild.amazonaws.com"), &awsiam.ServicePrincipalOpts{}),
+	})
+
+	// Grant Secrets Manager access to CodeBuild
+	grantableRole.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Effect:  awsiam.Effect_ALLOW,
+		Actions: jsii.Strings("secretsmanager:GetSecretValue"),
+		// Resources: jsii.Strings(*githubTokenSecret.SecretArn()),
+	}))
+
+	githubTokenSecret.GrantRead(grantableRole, jsii.Strings("AWSCURRENT"))
+
 	// CodeBuild Project
 	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
 		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
-			Owner:   jsii.String(os.Getenv("GITHUB_OWNER")),
-			Repo:    jsii.String(os.Getenv("GITHUB_REPO")),
+			Owner:   jsii.String(githubOwner),
+			Repo:    jsii.String(githubRepo),
 			Webhook: jsii.Bool(true),
 		}),
 		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("codebuild.yaml")),
+		Role:      grantableRole,
 		Environment: &awscodebuild.BuildEnvironment{
 			BuildImage: awscodebuild.LinuxBuildImage_STANDARD_7_0(),
+			EnvironmentVariables: &map[string]*awscodebuild.BuildEnvironmentVariable{
+				"GITHUB_TOKEN": {
+					// Value: githubToken.ToString(),
+					Value: githubTokenSecret.SecretValueFromJson(jsii.String("github-token")),
+					Type:  awscodebuild.BuildEnvironmentVariableType_SECRETS_MANAGER,
+				},
+			},
 		},
 	})
 
-	// Define GitHub token secret
-	// tokenSecret := os.Getenv("GITHUB_TOKEN_SECRET")
-	// if tokenSecret == "" {
-	// 	log.Fatal("Warning: GITHUB_TOKEN_SECRET variable is not defined.")
-	// }
-	secretOptions := &awscdk.SecretsManagerSecretOptions{}
-	// githubToken := awscdk.SecretValue_SecretsManager(jsii.String(os.Getenv("GITHUB_TOKEN_SECRET")), secretOptions)
+	// Define the policy document for CodeBuild webhooks and Secrets Manager access
+	webhookPolicyDocument := awsiam.NewPolicyDocument(&awsiam.PolicyDocumentProps{
+		Statements: &[]awsiam.PolicyStatement{
+			awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+
+				Effect:  awsiam.Effect_ALLOW,
+				Actions: jsii.Strings("codebuild:CreateWebHook", "codebuild:UpdateWebhook", "codebuild:DeleteWebhook"),
+				// Resources: jsii.Strings(*codeBuildV1.ProjectArn()), // Needs to be strict
+			}),
+		},
+	})
+
+	// Attach the defined policy to the CodeBuild role
+	codeBuildV1.Role().AttachInlinePolicy(awsiam.NewPolicy(stack, jsii.String("CodeBuildWebhookPolicy"), &awsiam.PolicyProps{
+		Document: webhookPolicyDocument,
+	}))
 
 	// CodePipeline Construct
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
@@ -72,9 +119,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 						ActionName: jsii.String("pipelineSource"),
 						Owner:      jsii.String(os.Getenv("GITHUB_OWNER")),
 						Repo:       jsii.String(os.Getenv("GITHUB_REPO")),
-						OauthToken: awscdk.SecretValue_SecretsManager(jsii.String("github-token"), secretOptions),
-						// OauthToken: awscdk.SecretsValue_PlainText(jsii.String(tokenSecret))
-						Output: awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
+						OauthToken: githubTokenSecret.SecretValue(),
+						Output:     awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
 					}),
 				},
 			},
