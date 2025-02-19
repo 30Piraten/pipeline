@@ -48,8 +48,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	}
 
 	// Secret Manager definition
-	githubTokenSecret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("GitHubTokenSecret"), jsii.String("githubTokenSecret"))
-	oauthTokenSecret := githubTokenSecret.SecretValue()
+	githubSecret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("GitHubTokenSecret"), jsii.String("token"))
+	oauthTokenSecret := githubSecret.SecretValue()
 
 	// Define IAM role for CodeBuild
 	cloudBuildRoleV1 := awsiam.NewRole(stack, jsii.String("CodeBuildRole"), &awsiam.RoleProps{
@@ -60,7 +60,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	cloudBuildRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 		Effect:    awsiam.Effect_ALLOW,
 		Actions:   jsii.Strings("secretsmanager:GetSecretValue"),
-		Resources: jsii.Strings(*githubTokenSecret.SecretArn()),
+		Resources: jsii.Strings(*githubSecret.SecretArn()),
 	}))
 
 	// CodeBuild Project
@@ -76,31 +76,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			BuildImage: awscodebuild.LinuxBuildImage_STANDARD_7_0(),
 			EnvironmentVariables: &map[string]*awscodebuild.BuildEnvironmentVariable{
 				"GITHUB_TOKEN": {
-					// CodeBuild expects the actual token not the ARN!
-					// Value: oauthTokenSecret.ToString(),
-					Value: githubTokenSecret.SecretArn(),
+					Value: githubSecret.SecretArn(), // SecretARN here
 					Type:  awscodebuild.BuildEnvironmentVariableType_SECRETS_MANAGER,
 				},
 			},
 		},
 	})
-
-	// Define the policy document for CodeBuild webhooks and Secrets Manager access
-	// webhookPolicyDocument := awsiam.NewPolicyDocument(&awsiam.PolicyDocumentProps{
-	// 	Statements: &[]awsiam.PolicyStatement{
-	// 		awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
-
-	// 			Effect:    awsiam.Effect_ALLOW,
-	// 			Actions:   jsii.Strings("codebuild:CreateWebhook", "codebuild:UpdateWebhook", "codebuild:DeleteWebhook"),
-	// 			Resources: jsii.Strings(*codeBuildV1.ProjectArn()), // Needs to be strict
-	// 		}),
-	// 	},
-	// })
-
-	// // Attach the defined policy to the CodeBuild role
-	// codeBuildV1.Role().AttachInlinePolicy(awsiam.NewPolicy(stack, jsii.String("CodeBuildWebhookPolicy"), &awsiam.PolicyProps{
-	// 	Document: webhookPolicyDocument,
-	// }))
 
 	// CodePipeline Construct
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
@@ -114,7 +95,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 						Owner:      jsii.String(githubOwner),
 						Repo:       jsii.String(githubRepo),
 						Branch:     jsii.String("main"),
-						OauthToken: oauthTokenSecret,
+						OauthToken: oauthTokenSecret, // Passed here
 						Output:     awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
 						Trigger:    awscodepipelineactions.GitHubTrigger_WEBHOOK,
 					}),
@@ -139,20 +120,20 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		Handler: jsii.String("bootstrap"),
 		Code:    awslambda.Code_FromAsset(jsii.String("./lambda/"), &awss3assets.AssetOptions{}),
 		Environment: &map[string]*string{
-			// "GITHUB_TOKEN": githubTokenSecret.SecretValue().ToString(),
-			"GITHUB_TOKEN": githubTokenSecret.SecretArn(),
+			"GITHUB_TOKEN": githubSecret.SecretArn(), // SecretARN here
 		},
 	})
 
 	// lambdaFunctionV1.Role().AddToPrincipalPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 	// 	Effect:    awsiam.Effect_ALLOW,
 	// 	Actions:   jsii.Strings("secretsmanager:GetSecretValue"),
-	// 	Resources: jsii.Strings(*githubTokenSecret.SecretArn()),
+	// 	Resources: jsii.Strings(*githubSecret.SecretArn()), // SecretARN here
 	// }))
 
 	// lambdaFuntionURL
 	lambdaFunctionURL := lambdaFunctionV1.AddFunctionUrl(&awslambda.FunctionUrlOptions{
-		AuthType: awslambda.FunctionUrlAuthType_AWS_IAM,
+		// AuthType: awslambda.FunctionUrlAuthType_AWS_IAM,
+		AuthType: awslambda.FunctionUrlAuthType_NONE,
 	})
 
 	// CloudWatch Construct
