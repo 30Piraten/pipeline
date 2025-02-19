@@ -1,32 +1,50 @@
 name: Go
 
-on: [push]
+# Define workflow triggers
+on: 
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
+# CI workflow to build & test project
 jobs:
   build:
-
     runs-on: ubuntu-latest
     strategy:
       matrix:
         go-version: [ '1.19', '1.20', '1.23.x' ]
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup Go ${{ matrix.go-version }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Set up Go 
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
           cache-dependency-path: subdir/go.sum
-      # What dependencies are we installing?
+          
+      # Install dependencies
       - name: Install dependencies
-        run: |
-          go get .
-      - name: Build
-        run: go build -v ./...
-      - name: Test with the Go CLI
-        run: go test -json > TestResults-${{ matrix.go-version }}.json
+        run: go mod tidy
+
+      # Run workflow tests
+      - name: Run tests
+        run: go test ./...
+
+      # Build the application and output
+      - name: Build application
+        run: go build -o myapp
+
+      # Upload test result
       - name: Upload Go test results 
         uses: actions/upload-artifact@v4
         with:
           name: Go-results-${{ matrix.go-version }}
           path: TestResults-${{ matrix.go-version }}.json
+
+# Secure AWS ACCESS from GitHub actions
