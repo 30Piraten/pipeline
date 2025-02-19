@@ -23,6 +23,14 @@ type PipelineBuildV1Props struct {
 	awscdk.StackProps
 }
 
+func checkEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("WARNING: %s environment variable is required!", key)
+	}
+	return value
+}
+
 func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBuildV1Props) awscdk.Stack {
 
 	var sprops awscdk.StackProps
@@ -32,27 +40,20 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	stack := awscdk.NewStack(scope, &id, &sprops)
 
 	// Get GitHub Owner and Repo from environment variables
-	githubOwner := os.Getenv("GITHUB_OWNER")
-	githubRepo := os.Getenv("GITHUB_REPO")
+	githubOwner := checkEnv("GITHUB_OWNER")
+	githubRepo := checkEnv("GITHUB_REPO")
 
 	if githubOwner == "" || githubRepo == "" {
 		log.Fatal("GITHUB_OWNER and GITHUB_REPO enviroment variables must be declared!")
 	}
 
 	// Secret Manager definition
-	githubTokenSecret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("GitHubTokenSecret"), jsii.String("github-token"))
-
-	// webhook Secret
-	// webhooksecret := awssecretsmanager.NewSecret(stack, jsii.String("GitHubWebhookSecret"), &awssecretsmanager.SecretProps{
-	// 	GenerateSecretString: &awssecretsmanager.SecretStringGenerator{
-	// 		SecretStringTemplate: jsii.String(`{"webhook-secret": "RANDOM_STRING"}`),
-	// 		GenerateStringKey:    jsii.String("webhook-secret"),
-	// 	},
-	// })
+	githubTokenSecret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("GitHubTokenSecret"), jsii.String("githubTokenSecret"))
+	oauthTokenSecret := githubTokenSecret.SecretValue()
 
 	// Define IAM role for CodeBuild
 	cloudBuildRoleV1 := awsiam.NewRole(stack, jsii.String("CodeBuildRole"), &awsiam.RoleProps{
-		AssumedBy: awsiam.NewServicePrincipal(jsii.String("codebuild.amazonaws.com"), &awsiam.ServicePrincipalOpts{}),
+		AssumedBy: awsiam.NewServicePrincipal(jsii.String("codebuild.amazonaws.com"), nil),
 	})
 
 	// Grant Secrets Manager access to CodeBuild
@@ -62,14 +63,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		Resources: jsii.Strings(*githubTokenSecret.SecretArn()),
 	}))
 
-	githubTokenSecret.GrantRead(cloudBuildRoleV1, jsii.Strings("AWSCURRENT"))
-
 	// CodeBuild Project
 	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
 		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
 			Owner:   jsii.String(githubOwner),
 			Repo:    jsii.String(githubRepo),
-			Webhook: jsii.Bool(true),
+			Webhook: jsii.Bool(false),
 		}),
 		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("codebuild.yaml")),
 		Role:      cloudBuildRoleV1,
@@ -77,7 +76,9 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			BuildImage: awscodebuild.LinuxBuildImage_STANDARD_7_0(),
 			EnvironmentVariables: &map[string]*awscodebuild.BuildEnvironmentVariable{
 				"GITHUB_TOKEN": {
-					Value: githubTokenSecret.SecretValue().ToString(),
+					// CodeBuild expects the actual token not the ARN!
+					// Value: oauthTokenSecret.ToString(),
+					Value: githubTokenSecret.SecretArn(),
 					Type:  awscodebuild.BuildEnvironmentVariableType_SECRETS_MANAGER,
 				},
 			},
@@ -85,21 +86,21 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	})
 
 	// Define the policy document for CodeBuild webhooks and Secrets Manager access
-	webhookPolicyDocument := awsiam.NewPolicyDocument(&awsiam.PolicyDocumentProps{
-		Statements: &[]awsiam.PolicyStatement{
-			awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+	// webhookPolicyDocument := awsiam.NewPolicyDocument(&awsiam.PolicyDocumentProps{
+	// 	Statements: &[]awsiam.PolicyStatement{
+	// 		awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 
-				Effect:    awsiam.Effect_ALLOW,
-				Actions:   jsii.Strings("codebuild:CreateWebhook", "codebuild:UpdateWebhook", "codebuild:DeleteWebhook"),
-				Resources: jsii.Strings(*codeBuildV1.ProjectArn()), // Needs to be strict
-			}),
-		},
-	})
+	// 			Effect:    awsiam.Effect_ALLOW,
+	// 			Actions:   jsii.Strings("codebuild:CreateWebhook", "codebuild:UpdateWebhook", "codebuild:DeleteWebhook"),
+	// 			Resources: jsii.Strings(*codeBuildV1.ProjectArn()), // Needs to be strict
+	// 		}),
+	// 	},
+	// })
 
-	// Attach the defined policy to the CodeBuild role
-	codeBuildV1.Role().AttachInlinePolicy(awsiam.NewPolicy(stack, jsii.String("CodeBuildWebhookPolicy"), &awsiam.PolicyProps{
-		Document: webhookPolicyDocument,
-	}))
+	// // Attach the defined policy to the CodeBuild role
+	// codeBuildV1.Role().AttachInlinePolicy(awsiam.NewPolicy(stack, jsii.String("CodeBuildWebhookPolicy"), &awsiam.PolicyProps{
+	// 	Document: webhookPolicyDocument,
+	// }))
 
 	// CodePipeline Construct
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
@@ -110,10 +111,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 				Actions: &[]awscodepipeline.IAction{
 					awscodepipelineactions.NewGitHubSourceAction(&awscodepipelineactions.GitHubSourceActionProps{
 						ActionName: jsii.String("pipelineSource"),
-						Owner:      jsii.String(os.Getenv("GITHUB_OWNER")),
-						Repo:       jsii.String(os.Getenv("GITHUB_REPO")),
-						// OauthToken: githubTokenSecret.SecretValue(),
-						Output: awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
+						Owner:      jsii.String(githubOwner),
+						Repo:       jsii.String(githubRepo),
+						Branch:     jsii.String("main"),
+						OauthToken: oauthTokenSecret,
+						Output:     awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
+						Trigger:    awscodepipelineactions.GitHubTrigger_WEBHOOK,
 					}),
 				},
 			},
@@ -129,7 +132,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			},
 		},
 	})
-	githubTokenSecret.GrantRead(codePipelineV1.Role(), jsii.Strings("AWSCURRENT"))
 
 	// Define the Lambda function
 	lambdaFunctionV1 := awslambda.NewFunction(stack, jsii.String("pipelineHandler"), &awslambda.FunctionProps{
@@ -137,15 +139,16 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		Handler: jsii.String("bootstrap"),
 		Code:    awslambda.Code_FromAsset(jsii.String("./lambda/"), &awss3assets.AssetOptions{}),
 		Environment: &map[string]*string{
-			"GITHUB_TOKEN": githubTokenSecret.SecretValue().ToString(),
+			// "GITHUB_TOKEN": githubTokenSecret.SecretValue().ToString(),
+			"GITHUB_TOKEN": githubTokenSecret.SecretArn(),
 		},
 	})
 
-	lambdaFunctionV1.Role().AddToPrincipalPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
-		Effect:    awsiam.Effect_ALLOW,
-		Actions:   jsii.Strings("secretsmanager:GetSecretValue"),
-		Resources: jsii.Strings(*githubTokenSecret.SecretArn()),
-	}))
+	// lambdaFunctionV1.Role().AddToPrincipalPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+	// 	Effect:    awsiam.Effect_ALLOW,
+	// 	Actions:   jsii.Strings("secretsmanager:GetSecretValue"),
+	// 	Resources: jsii.Strings(*githubTokenSecret.SecretArn()),
+	// }))
 
 	// lambdaFuntionURL
 	lambdaFunctionURL := lambdaFunctionV1.AddFunctionUrl(&awslambda.FunctionUrlOptions{
@@ -153,14 +156,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	})
 
 	// CloudWatch Construct
-	metricNamespace := os.Getenv("METRIC_NAMESPACE")
-	if metricNamespace == "" {
-		log.Fatal("Warning: METRIC_NAMESPACE variable for CloudWatch is not defined.")
-	}
-	metricName := os.Getenv("METRIC_NAME")
-	if metricName == "" {
-		log.Fatal("Warning: METRIC_NAME variable for CloudWatch is not defined.")
-	}
+	metricNamespace := checkEnv("METRIC_NAMESPACE")
+	metricName := checkEnv("METRIC_NAME")
 
 	awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
 		Namespace:  jsii.String(metricNamespace),
@@ -188,13 +185,11 @@ func main() {
 	defer jsii.Close()
 
 	// Load .env variables one time
-	err := godotenv.Load()
-	if err != nil {
+	if err := godotenv.Load(); err != nil {
 		log.Fatal("Warning: .env file not found or could not be loaded", err)
 	}
 
 	app := awscdk.NewApp(nil)
-
 	NewPipelineBuildV1(app, "CodePipelineCdkStack", &PipelineBuildV1Props{
 		awscdk.StackProps{
 			Env: env(),
@@ -205,18 +200,8 @@ func main() {
 }
 
 func env() *awscdk.Environment {
-	accountID := os.Getenv("ACCOUNT_ID")
-	if accountID == "" {
-		log.Fatal("Error: ACCOUNT_ID environment variable is required.")
-	}
-
-	accountRegion := os.Getenv("ACCOUNT_REGION")
-	if accountRegion == "" {
-		log.Fatal("Error: ACCOUNT_REGION environment variable is required.")
-	}
-
 	return &awscdk.Environment{
-		Account: jsii.String(accountID),
-		Region:  jsii.String(accountRegion),
+		Account: jsii.String(checkEnv("ACCOUNT_ID")),
+		Region:  jsii.String(checkEnv("ACCOUNT_REGION")),
 	}
 }
