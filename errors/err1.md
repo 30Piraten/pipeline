@@ -29,9 +29,16 @@ main.main()
 	/Volumes/r3/course/awsCloud-r3/project-r3/aws/cdk/bin/cdk.go:192 +0x114
 exit status 2
 
--> Pass the OauthToken: <field> as a variable. 
-::: oauthTokenSecret := githubTokenSecret.SecretValue()
--> use this in the codepipeline construct 
--> for both codebuild and lambda, pass the secret value ARN: githubTokenSecret.SecretArn(), 
+-> Start by creating a GitHub token. Select the repo & admin:repo_hook permissions 
+-> from the aws console or cli, (console recommended). Store the secret using plain text, no json formatting.
+-> I also disabled webhook for CodeBuild. CodePipeline now references it instead.
+
+Then this: 
+-> // Secret Manager definition
+	// token, here is my secret name in SecretsManager
+	githubSecret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("GitHubTokenSecret"), jsii.String("token"))
+	oauthTokenSecret := githubSecret.SecretValue() // I've also referenced it here. This will be passed to CodePipeline GitHubSourceAction
+	While the SecretARN of the githubSecret will be passed to CodeBuild && Lambda (if needed), like this:
+	-> githubSecret.SecretARN()
 
 ```
