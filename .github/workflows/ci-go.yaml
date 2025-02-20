@@ -35,8 +35,11 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Debug GitHub directory
+        run: ls -R
+
       - name: Build application
-        run: go build -o myapp ../bin
+        run: go build -o myapp .
 
       - name: Upload Go test results 
         uses: actions/upload-artifact@v4
