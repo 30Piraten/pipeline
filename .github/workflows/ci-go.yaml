@@ -1,3 +1,4 @@
+
 name: Go
 
 on: 
@@ -55,6 +56,13 @@ jobs:
 
       - name: CDK Synth
         run: cdk synth --app "go run bin/cdk.go"
+        env:
+          ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+          ACCOUNT_REGION: ${{ vars.ACCOUNT_REGION }}
+          GITHUB_OWNER: ${{ vars.OWNER_REPO }}
+          GITHUB_REPO: ${{ vars.REPO_NAME }}
+          METRIC_NAME: ${{ vars.METRIC_NAME }}
+          METRIC_NAMESPACE: ${{ vars.METRIC_NAMESPACE }}
       
       # Optionally Deploy CDK Stack
       - name: CDK Deploy
