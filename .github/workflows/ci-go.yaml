@@ -52,7 +52,7 @@ jobs:
 
       # Load .env file 
       - name: Load .env variables 
-        run: cat .env >> $GITHUB_ENV
+        run: cat ../../bin/.env >> $GITHUB_ENV
 
       # CDK Build
       - name: Install AWS CDK
