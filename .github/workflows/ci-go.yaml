@@ -54,6 +54,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           role-session-name: GitHubActions
           aws-region: us-east-1
-      
+          
       - name: Verify AWS Credentials 
         uses: aws sts get-caller-identity
+        
+    permissions:
+      id-token: write
+      contents: read
+      
