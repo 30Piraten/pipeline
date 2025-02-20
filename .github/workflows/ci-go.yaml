@@ -62,22 +62,12 @@ jobs:
         run: cdk synth --app "go run bin/cdk.go"
         env:
           ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
-          ACCOUNT_REGION: ${{ env.ACCOUNT_REGION }}
-          GITHUB_OWNER: ${{ env.GITHUB_OWNER }}
-          GITHUB_REPO: ${{ env.GITHUB_REPO }}
-          METRIC_NAME: ${{ env.METRIC_NAME }}
-          METRIC_NAMESPACE: ${{ env.METRIC_NAMESPACE }}
       
       # Optionally Deploy CDK Stack
       - name: CDK Deploy
         run: cdk deploy --require-approval never
         env:
           ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
-          ACCOUNT_REGION: ${{ env.ACCOUNT_REGION }}
-          GITHUB_OWNER: ${{ env.GITHUB_OWNER }}
-          GITHUB_REPO: ${{ env.GITHUB_REPO }}
-          METRIC_NAME: ${{ env.METRIC_NAME }}
-          METRIC_NAMESPACE: ${{ env.METRIC_NAMESPACE }}
 
       # Trigger AWS CodeBuild for Lambda Build
       - name: Trigger AWS CodeBuild
