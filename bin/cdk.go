@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+	"path/filepath"
+	"runtime"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscloudwatch"
@@ -40,6 +42,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	// Get GitHub Owner and Repo from environment variables
 	// githubOwner := checkEnv("GITHUB_OWNER")
 	// githubRepo := checkEnv("GITHUB_REPO")
+
+	// Specific for Lambda function file path
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("Could not get file name")
+	}
 
 	// Secret Manager definition
 	githubSecret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("GitHubTokenSecret"), jsii.String("token"))
@@ -108,11 +116,14 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		},
 	})
 
+	// Define File path dir
+	lambdaDir := filepath.Join(filepath.Dir(filename), "lambda")
+
 	// Define the Lambda function
 	lambdaFunctionV1 := awslambda.NewFunction(stack, jsii.String("pipelineHandler"), &awslambda.FunctionProps{
 		Runtime: awslambda.Runtime_PROVIDED_AL2(),
 		Handler: jsii.String("bootstrap"),
-		Code:    awslambda.Code_FromAsset(jsii.String("./lambda/"), &awss3assets.AssetOptions{}),
+		Code:    awslambda.Code_FromAsset(jsii.String(lambdaDir), &awss3assets.AssetOptions{}),
 		Environment: &map[string]*string{
 			"GITHUB_TOKEN": githubSecret.SecretArn(), // SecretARN here
 		},
