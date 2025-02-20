@@ -54,6 +54,12 @@ jobs:
       # - name: Load .env variables 
       #   run: cat bin/.env >> $GITHUB_ENV
 
+      # Ensure Lambda function source exists before CDK build
+      - name: Ensure Lambda Code Exists
+        run: |
+          mkdir -p bin/lambda
+          cp -r bin/cdk.out/asset.*/pipeline.go bin/lambda/ || echo "Lambda file already exists"
+
       # CDK Build
       - name: Install AWS CDK
         run: npm install -g aws-cdk
