@@ -60,7 +60,7 @@ jobs:
 
       # Optionally Deploy CDK Stack
       - name: CDK Deploy
-        run: cdk deploy --require-approval never
+        run: cdk deploy --app "go run bin/cdk.go" --require-approval never
         env:
           ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
 
