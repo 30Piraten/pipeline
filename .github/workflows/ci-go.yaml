@@ -50,10 +50,6 @@ jobs:
       - name: Verify AWS Credentials 
         run: aws sts get-caller-identity
 
-      # # Load .env file 
-      # - name: Load .env variables 
-      #   run: cat bin/.env >> $GITHUB_ENV
-
       # Ensure Lambda function source exists before CDK build
       - name: Ensure Lambda Code Exists
         run: |
