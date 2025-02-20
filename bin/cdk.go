@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"os"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -14,7 +13,6 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
 	"github.com/aws/jsii-runtime-go"
-	"github.com/joho/godotenv"
 
 	"github.com/aws/constructs-go/constructs/v10"
 )
@@ -23,13 +21,13 @@ type PipelineBuildV1Props struct {
 	awscdk.StackProps
 }
 
-func checkEnv(key string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		log.Fatalf("WARNING: %s environment variable is required!", key)
-	}
-	return value
-}
+// func checkEnv(key string) string {
+// 	value := os.Getenv(key)
+// 	if value == "" {
+// 		log.Fatalf("WARNING: %s environment variable is required!", key)
+// 	}
+// 	return value
+// }
 
 func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBuildV1Props) awscdk.Stack {
 
@@ -40,8 +38,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	stack := awscdk.NewStack(scope, &id, &sprops)
 
 	// Get GitHub Owner and Repo from environment variables
-	githubOwner := checkEnv("GITHUB_OWNER")
-	githubRepo := checkEnv("GITHUB_REPO")
+	// githubOwner := checkEnv("GITHUB_OWNER")
+	// githubRepo := checkEnv("GITHUB_REPO")
 
 	// Secret Manager definition
 	githubSecret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("GitHubTokenSecret"), jsii.String("token"))
@@ -62,8 +60,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	// CodeBuild Project
 	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
 		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
-			Owner:   jsii.String(githubOwner),
-			Repo:    jsii.String(githubRepo),
+			Owner:   jsii.String(os.Getenv("30Piraten")),
+			Repo:    jsii.String("pipeline"),
 			Webhook: jsii.Bool(false),
 		}),
 		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("codebuild.yaml")),
@@ -88,8 +86,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 				Actions: &[]awscodepipeline.IAction{
 					awscodepipelineactions.NewGitHubSourceAction(&awscodepipelineactions.GitHubSourceActionProps{
 						ActionName: jsii.String("pipelineSource"),
-						Owner:      jsii.String(githubOwner),
-						Repo:       jsii.String(githubRepo),
+						Owner:      jsii.String(os.Getenv("GITHUB_OWNER")),
+						Repo:       jsii.String("pipeline"),
 						Branch:     jsii.String("main"),
 						OauthToken: oauthTokenSecret, // Passed here
 						Output:     awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
@@ -133,12 +131,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	})
 
 	// CloudWatch Construct
-	metricNamespace := checkEnv("METRIC_NAMESPACE")
-	metricName := checkEnv("METRIC_NAME")
+	// metricNamespace := checkEnv("METRIC_NAMESPACE")
+	// metricName := checkEnv("METRIC_NAME")
 
 	awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
-		Namespace:  jsii.String(metricNamespace),
-		MetricName: jsii.String(metricName),
+		Namespace:  jsii.String("Invocations"),
+		MetricName: jsii.String("AWS/Lambda"),
 		DimensionsMap: &map[string]*string{
 			"FunctionName": lambdaFunctionV1.FunctionName(),
 		},
@@ -162,9 +160,9 @@ func main() {
 	defer jsii.Close()
 
 	// Load .env variables one time
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Warning: .env file not found or could not be loaded", err)
-	}
+	// if err := godotenv.Load(); err != nil {
+	// 	log.Fatal("Warning: .env file not found or could not be loaded", err)
+	// }
 
 	app := awscdk.NewApp(nil)
 	NewPipelineBuildV1(app, "CodePipelineCdkStack", &PipelineBuildV1Props{
@@ -178,7 +176,9 @@ func main() {
 
 func env() *awscdk.Environment {
 	return &awscdk.Environment{
-		Account: jsii.String(checkEnv("ACCOUNT_ID")),
-		Region:  jsii.String(checkEnv("ACCOUNT_REGION")),
+		// Account: jsii.String(checkEnv("ACCOUNT_ID")),
+		// Region:  jsii.String(checkEnv("ACCOUNT_REGION")),
+		Account: jsii.String(os.Getenv("ACCOUNT_ID")),
+		Region:  jsii.String("us-east-1"),
 	}
 }
