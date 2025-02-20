@@ -47,7 +47,7 @@ go.work.sum
 /docs/GUIDE.md
 
 // env
-# .env 
+bin/.env 
 
 // others
-/others
+others
