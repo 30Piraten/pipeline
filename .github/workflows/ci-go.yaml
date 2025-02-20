@@ -42,7 +42,11 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
+          # TODO - Finalize this 3.6. AWS console still not connecting! 
+          # This won't build, but already confirmed prior, so no horsing!
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           role-session-name: GitHubActions
           aws-region: us-east-1
 
@@ -58,12 +62,10 @@ jobs:
         env:
           ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
 
-      # Optionally Deploy CDK Stack
-      - name: CDK Deploy
-        run: cdk deploy --app "go run bin/cdk.go" --require-approval never
-        env:
-          ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
-
       # Trigger AWS CodeBuild for Lambda Build
       - name: Trigger AWS CodeBuild
         run: aws codebuild start-build --project-name "CodeBuildV1"
+  
+      # Trigger AWS CodePipeline - Starts new deployment
+      - name: Trigger AWS CodePipeline
+        run: aws codepipeline start-pipeline-execution --name pipelineV1
