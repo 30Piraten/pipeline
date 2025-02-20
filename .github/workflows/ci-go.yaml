@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [ '1.22' ]
+        go-version: [ '1.23' ]
 
     permissions:
       id-token: write
@@ -49,6 +49,12 @@ jobs:
           
       - name: Verify AWS Credentials 
         run: aws sts get-caller-identity
+
+      # Ensure Lambda function source exists before CDK build
+      - name: Ensure Lambda Code Exists
+        run: |
+          mkdir -p bin/lambda
+          cp -r bin/cdk.out/asset.*/pipeline.go bin/lambda/ || echo "Lambda file already exists"
 
       # CDK Build
       - name: Install AWS CDK
