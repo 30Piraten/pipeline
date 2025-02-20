@@ -1,17 +1,6 @@
 # Errors Encountered:
 
-
 ## Error 1:
-```
-Failed resources:
-CodePipelineCdkStack | 9:15:20 PM | CREATE_FAILED        | AWS::CodeBuild::Project     | CodeBuildV1 (CodeBuildV1A60ECD8B) Failed to call CreateWebhook, reason: Access token not found in CodeBuild project for server type github (Service: AWSCodeBuild; Status Code: 400; Error Code: ResourceNotFoundException; Request ID: 8e98045e-e5af-4025-88ef-dcf995e585be; Proxy: null)
-❌  CodePipelineCdkStack failed: _ToolkitError: The stack named CodePipelineCdkStack failed creation, it may need to be manually deleted from the AWS console: ROLLBACK_COMPLETE: Failed to call CreateWebhook, reason: Access token not found in CodeBuild project for server type github (Service: AWSCodeBuild; Status Code: 400; Error Code: ResourceNotFoundException; Request ID: 8e98045e-e5af-4025-88ef-dcf995e585be; Proxy: null)
-
--> Turns out the root of cause of this is the lack of IAM role/policy. Even though the PAT is valid and properly configured for both PlainText and SecretsManager, my CodeBuild does not have the right permissions to create webhooks in my GitHub repo. 
-
-```
-
-## Error 2:
 ```
 ➜ cdk synth
 panic: Error: Resolution error: Resolution error: Resolution error: Resolution error: Synthing a secret value to Resources/${Token[CodePipelineCdkStack.CodeBuildRole.DefaultPolicy.Resource.LogicalID.30]}/Properties/policyDocument/Statement/1/Resource. Using a SecretValue here risks exposing your secret. Only pass SecretValues to constructs that accept a SecretValue property, or call AWS Secrets Manager directly in your runtime code. Call 'secretValue.unsafeUnwrap()' if you understand and accept the risks..
@@ -41,4 +30,18 @@ Then this:
 	While the SecretARN of the githubSecret will be passed to CodeBuild && Lambda (if needed), like this:
 	-> githubSecret.SecretARN()
 
+```
+
+## Error 2:
+```
+Run cdk deploy --app "go run bin/cdk.go" --require-approval never
+  
+[Warning at /CodePipelineCdkStack/pipelineV1] V1 pipeline type is implicitly selected when `pipelineType` is not set. If you want to use V2 type, set `PipelineType.V2`. [ack: @aws-cdk/aws-codepipeline:unspecifiedPipelineType]
+✨  Synthesis time: 1.97s
+current credentials could not be used to assume 'arn:aws:iam::***:role/cdk-hnb659fds-deploy-role-***-us-east-1', but are for the right account. Proceeding anyway.
+CodePipelineCdkStack: This CDK deployment requires bootstrap stack version '6', but during the confirmation via SSM parameter /cdk-bootstrap/hnb659fds/version the following error occurred: AccessDeniedException: User: arn:aws:sts::***:assumed-role/GitHubActionsCICD/GitHubActions is not authorized to perform: ssm:GetParameter on resource: arn:aws:ssm:us-east-1:***:parameter/cdk-bootstrap/hnb659fds/version because no identity-based policy allows the ssm:GetParameter action
+Error: Process completed with exit code 1.
+
+--> arn:aws:sts::***:assumed-role/GitHubActionsCICD/GitHubActions needs the right permissions for cdk deploy: 
+--> ssm:GetParameter needs to be assigned to GitHubActions
 ```
