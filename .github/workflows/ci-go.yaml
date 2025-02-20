@@ -48,3 +48,12 @@ jobs:
           path: TestResults-${{ matrix.go-version }}.json
 
 # Secure AWS ACCESS from GitHub actions
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActions
+          aws-region: us-east-1
+      
+      - name: Verify AWS Credentials 
+        uses: aws sts get-caller-identity
