@@ -43,10 +43,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	githubOwner := checkEnv("GITHUB_OWNER")
 	githubRepo := checkEnv("GITHUB_REPO")
 
-	if githubOwner == "" || githubRepo == "" {
-		log.Fatal("GITHUB_OWNER and GITHUB_REPO enviroment variables must be declared!")
-	}
-
 	// Secret Manager definition
 	githubSecret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("GitHubTokenSecret"), jsii.String("token"))
 	oauthTokenSecret := githubSecret.SecretValue()
