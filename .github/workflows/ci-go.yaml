@@ -50,9 +50,9 @@ jobs:
       - name: Verify AWS Credentials 
         run: aws sts get-caller-identity
 
-      # Load .env file 
-      - name: Load .env variables 
-        run: cat bin/.env >> $GITHUB_ENV
+      # # Load .env file 
+      # - name: Load .env variables 
+      #   run: cat bin/.env >> $GITHUB_ENV
 
       # CDK Build
       - name: Install AWS CDK
