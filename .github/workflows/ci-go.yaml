@@ -38,15 +38,7 @@ jobs:
       - name: Debug GitHub directory
         run: ls -R
 
-      - name: Build application
-        run: go build -o myapp ./...
-
-      - name: Upload Go test results 
-        uses: actions/upload-artifact@v4
-        with:
-          name: Go-results-1.23
-          path: TestResults-1.23.json
-
+      # Setup AWS Credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -56,3 +48,18 @@ jobs:
           
       - name: Verify AWS Credentials 
         run: aws sts get-caller-identity
+
+      # CDK Build
+      - name: Install AWS CDK
+        run: npm install -g aws-cdk
+
+      - name: CDK Synth
+        run: cdk synth
+      
+      # Optionally Deploy CDK Stack
+      - name: CDK Deploy
+        run: cdk deploy --require-approval never
+
+      # Trigger AWS CodeBuild for Lambda Build
+      - name: Trigger AWS CodeBuild
+        run: aws codebuild start-build --project-name "CodeBuildV1"
