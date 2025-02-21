@@ -60,4 +60,8 @@ CodePipelineCdkStack: creating CloudFormation changeset...
 --> Two options: 
 	1, custom Lambda function to handle validation checks after a new version of lambda is deployed. This new custom Lambda function can monitor cloudwatch metrics and if validation checks fail this can trigger a rollback by invoking codedeploy API. 
 	2, Use codebuild in-built health checks for now. Its simpler and mostly sufficient, unless granular permissions are needed. 
+	3, Modify the CloudWatch Alarm logic by removing it from the direct deploymentGroupV1 definition. Instead of attaching the alarm inside deploymentGroupV1, define it later in a separate construct: 
+		awscdk.NewCfnOutput(stack, jsii.String("RollbackAlarmOutput"), &awscdk.CfnOutputProps{
+    	Value: rollbackAlarm.AlarmArn(),
+})
 ```
