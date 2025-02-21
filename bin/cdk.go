@@ -68,19 +68,19 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		},
 		Code: awslambda.Code_FromAsset(jsii.String(lambdaDir), &awss3assets.AssetOptions{}),
 		Environment: &map[string]*string{
-			"GITHUB_TOKEN": githubSecret.SecretArn(), // SecretARN here,
+			"GITHUB_TOKEN": githubSecret.SecretArn(),
 		},
-	})
-
-	// CODEDEPLOY LOGIC DEFINITION
-	codeDeployV1 := awscodedeploy.NewLambdaApplication(stack, jsii.String("LambdaDeployV1"), &awscodedeploy.LambdaApplicationProps{
-		ApplicationName: jsii.String("codeDeployLambdaV1"),
 	})
 
 	// Define a Lambda Alias for Deployment
 	lambdaAlias := awslambda.NewAlias(stack, jsii.String("production"), &awslambda.AliasProps{
 		AliasName: jsii.String("Live"),
 		Version:   lambdaFunctionV1.CurrentVersion(),
+	})
+
+	// CODEDEPLOY LOGIC DEFINITION
+	codeDeployV1 := awscodedeploy.NewLambdaApplication(stack, jsii.String("LambdaDeployV1"), &awscodedeploy.LambdaApplicationProps{
+		ApplicationName: jsii.String("codeDeployLambdaV1"),
 	})
 
 	// Define a Deployment application
@@ -94,6 +94,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		},
 	})
 
+	// LAMBDA IAM ACCESS
 	// Restrict Lambda's access to GitHub secret
 	lambdaFunctionV1.Role().AddToPrincipalPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 		Effect:    awsiam.Effect_ALLOW,
@@ -108,30 +109,35 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	}))
 
 	// Grant AWS CodePipeline to invoke Lambda
-	lambdaFunctionV1.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
+	// lambdaFunctionV1.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
 	lambdaAlias.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
 
 	// CODEBUILD LOGIC DEFINITION
 	// Define IAM role for CodeBuild
-	cloudBuildRoleV1 := awsiam.NewRole(stack, jsii.String("CodeBuildRole"), &awsiam.RoleProps{
+	codeBuildRoleV1 := awsiam.NewRole(stack, jsii.String("CodeBuildRole"), &awsiam.RoleProps{
 		AssumedBy: awsiam.NewServicePrincipal(jsii.String("codebuild.amazonaws.com"), nil),
 	})
 
 	// Grant Secrets Manager access to CodeBuild
-	cloudBuildRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+	codeBuildRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 		Effect:    awsiam.Effect_ALLOW,
 		Actions:   jsii.Strings("secretsmanager:GetSecretValue"),
 		Resources: jsii.Strings(*githubSecret.SecretArn()),
+	}))
+
+	codeBuildRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Effect:    awsiam.Effect_ALLOW,
+		Actions:   jsii.Strings("codebuild:StartBuild", "codepipeline:PutJobSuccessResult"),
+		Resources: jsii.Strings("*codeBuildV1.ProjectArn()"),
 	}))
 
 	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
 		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
 			Owner: jsii.String("30Piraten"),
 			Repo:  jsii.String("pipeline"),
-			// Webhook: jsii.Bool(false),
 		}),
 		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("codebuild.yaml")),
-		Role:      cloudBuildRoleV1,
+		Role:      codeBuildRoleV1,
 		Environment: &awscodebuild.BuildEnvironment{
 			ComputeType: awscodebuild.ComputeType_MEDIUM,
 			BuildImage:  awscodebuild.LinuxBuildImage_STANDARD_7_0(),
@@ -143,6 +149,16 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			},
 		},
 	})
+
+	codePipelineRoleV1 := awsiam.NewRole(stack, jsii.String("CodePipelineRole"), &awsiam.RoleProps{
+		AssumedBy: awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil),
+	})
+
+	codePipelineRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Effect:    awsiam.Effect_ALLOW,
+		Actions:   jsii.Strings("codeploy:CreateDeployment", "codedeploy:GetDeploymentConfig", "codedeploy:GetDeployment"),
+		Resources: jsii.Strings("*codePipelineV1.PipelineArn()"),
+	}))
 
 	// CODEPIPELINE LOGIC DEFINITION
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
