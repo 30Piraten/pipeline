@@ -53,10 +53,19 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	}
 	lambdaDir := filepath.Join(filepath.Dir(filename), "lambda")
 
+	// IAM role for Lambda with least privilege
+	lambdaRole := awsiam.NewRole(stack, jsii.String("LambdaExecRole"), &awsiam.RoleProps{
+		AssumedBy: awsiam.NewServicePrincipal(jsii.String("lambda.amazonaws.com"), nil),
+		ManagedPolicies: &[]awsiam.IManagedPolicy{
+			awsiam.ManagedPolicy_FromAwsManagedPolicyName(jsii.String("AWSLambdaBasicExecutionRole")),
+		},
+	})
+
 	// Define the Lambda function
 	lambdaFunctionV1 := awslambda.NewFunction(stack, jsii.String("pipelineHandler"), &awslambda.FunctionProps{
 		Runtime:                awslambda.Runtime_PROVIDED_AL2(),
 		Handler:                jsii.String("bootstrap"),
+		Role:                   lambdaRole,
 		RetryAttempts:          jsii.Number(2),
 		MemorySize:             jsii.Number(1024),
 		Timeout:                awscdk.Duration_Seconds(jsii.Number(30)),
@@ -140,7 +149,9 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		Role:      codeBuildRoleV1,
 		Environment: &awscodebuild.BuildEnvironment{
 			ComputeType: awscodebuild.ComputeType_MEDIUM,
-			BuildImage:  awscodebuild.LinuxBuildImage_STANDARD_7_0(),
+
+			// What are rhe benefits of using ARM-based Graviton?
+			BuildImage: awscodebuild.LinuxBuildImage_FromCodeBuildImageId(jsii.String("aws/codebuild/amazonlinux2-aarch64-standard:2.0")),
 			EnvironmentVariables: &map[string]*awscodebuild.BuildEnvironmentVariable{
 				"GITHUB_TOKEN": {
 					Value: githubSecret.SecretArn(),
@@ -150,6 +161,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		},
 	})
 
+	// CODEPIPELINE LOGIC DEFINITION
 	codePipelineRoleV1 := awsiam.NewRole(stack, jsii.String("CodePipelineRole"), &awsiam.RoleProps{
 		AssumedBy: awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil),
 	})
@@ -160,7 +172,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		Resources: jsii.Strings("*codePipelineV1.PipelineArn()"),
 	}))
 
-	// CODEPIPELINE LOGIC DEFINITION
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
 		PipelineName: jsii.String("CodeBuildPipeline"),
 		Stages: &[]*awscodepipeline.StageProps{
