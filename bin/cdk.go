@@ -92,8 +92,9 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		Alias:            lambdaAlias,
 		DeploymentConfig: awscodedeploy.LambdaDeploymentConfig_LINEAR_10PERCENT_EVERY_1MINUTE(),
 		AutoRollback: &awscodedeploy.AutoRollbackConfig{
-			DeploymentInAlarm: jsii.Bool(true),
+			// DeploymentInAlarm: jsii.Bool(true),
 			FailedDeployment:  jsii.Bool(true),
+			StoppedDeployment: jsii.Bool(true),
 		},
 	})
 
@@ -111,7 +112,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	}))
 
 	// Grant AWS CodePipeline to invoke Lambda
-	lambdaFunctionV1.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
+	// lambdaFunctionV1.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
+	lambdaAlias.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
 
 	// Since the Lambda function takes a secretARN, we need secure it
 	// I don't see the reason for this yet! Not necessary, but will let horse around a bit.
@@ -185,6 +187,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			{
 				StageName: jsii.String("Deploy"),
 				Actions: &[]awscodepipeline.IAction{
+					// There was a brawl here, especially with the mismatch with ILambda & IServer type.
 					// Create & update the Lambda function via CloudFormation
 					awscodepipelineactions.NewCloudFormationCreateReplaceChangeSetAction(&awscodepipelineactions.CloudFormationCreateReplaceChangeSetActionProps{
 						ActionName:       jsii.String("PrepareChanges"),
@@ -206,18 +209,21 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		},
 	})
 
+	// I'll review this later. But the cdk deploy works fine and my
+	// resources via cloudformation works better! Might need custom granular
+	// validation checks
 	// CLOUDWATCH LOGIC DEFINITION
 	// CloudWatch Construct
-	rollbackAlarm := awscloudwatch.NewAlarm(stack, jsii.String("LambdaDeploymentAlarm"), &awscloudwatch.AlarmProps{
-		Metric:             lambdaFunctionV1.MetricErrors(&awscloudwatch.MetricOptions{}),
-		ComparisonOperator: awscloudwatch.ComparisonOperator_GREATER_THAN_THRESHOLD,
-		Threshold:          jsii.Number(5), // Need to review!
-		EvaluationPeriods:  jsii.Number(1),
-		AlarmName:          jsii.String("LambdaDeploymentFailure"),
-	})
+	// rollbackAlarm := awscloudwatch.NewAlarm(stack, jsii.String("LambdaDeploymentAlarm"), &awscloudwatch.AlarmProps{
+	// 	Metric:             lambdaFunctionV1.MetricErrors(&awscloudwatch.MetricOptions{}),
+	// 	ComparisonOperator: awscloudwatch.ComparisonOperator_GREATER_THAN_THRESHOLD,
+	// 	Threshold:          jsii.Number(5), // Need to review!
+	// 	EvaluationPeriods:  jsii.Number(1),
+	// 	AlarmName:          jsii.String("LambdaDeploymentFailure"),
+	// })
 
-	// Attach the Alarm to deployment group
-	deploymentGroupV1.AddAlarm(rollbackAlarm)
+	// // Attach the Alarm to deployment group
+	// deploymentGroupV1.AddAlarm(rollbackAlarm)
 
 	awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
 		Namespace:  jsii.String("Invocations"),
