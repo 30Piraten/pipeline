@@ -47,7 +47,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	oauthTokenSecret := githubSecret.SecretValue()
 
 	// LAMBDA LOGIC DEFINITION
-	// Define File path dir --> Specific for Lambda function file path
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		panic("Could not get file name")
@@ -67,7 +66,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			RemovalPolicy: awscdk.RemovalPolicy_RETAIN,
 			Description:   jsii.String("Automated Version"),
 		},
-		// must come from --> awslambda.Code_FromCfnParatemers() since Lambda is only used as deployment strategy
 		Code: awslambda.Code_FromAsset(jsii.String(lambdaDir), &awss3assets.AssetOptions{}),
 		Environment: &map[string]*string{
 			"GITHUB_TOKEN": githubSecret.SecretArn(), // SecretARN here,
@@ -75,7 +73,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	})
 
 	// CODEDEPLOY LOGIC DEFINITION
-	// CodeDeploy + CloudWatch Alarm for rollback
 	codeDeployV1 := awscodedeploy.NewLambdaApplication(stack, jsii.String("LambdaDeployV1"), &awscodedeploy.LambdaApplicationProps{
 		ApplicationName: jsii.String("codeDeployLambdaV1"),
 	})
@@ -87,12 +84,11 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	})
 
 	// Define a Deployment application
-	deploymentGroupV1 := awscodedeploy.NewLambdaDeploymentGroup(stack, jsii.String("BlueGreenDeployment"), &awscodedeploy.LambdaDeploymentGroupProps{
+	deploymentGroupV1 := awscodedeploy.NewLambdaDeploymentGroup(stack, jsii.String("BGCDeployment"), &awscodedeploy.LambdaDeploymentGroupProps{
 		Application:      codeDeployV1,
 		Alias:            lambdaAlias,
-		DeploymentConfig: awscodedeploy.LambdaDeploymentConfig_LINEAR_10PERCENT_EVERY_1MINUTE(),
+		DeploymentConfig: awscodedeploy.LambdaDeploymentConfig_CANARY_10PERCENT_5MINUTES(),
 		AutoRollback: &awscodedeploy.AutoRollbackConfig{
-			// DeploymentInAlarm: jsii.Bool(true),
 			FailedDeployment:  jsii.Bool(true),
 			StoppedDeployment: jsii.Bool(true),
 		},
@@ -107,19 +103,13 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 
 	lambdaFunctionV1.Role().AddToPrincipalPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 		Effect:    awsiam.Effect_ALLOW,
-		Actions:   jsii.Strings("codedeploy:CreateDeployment", "codedeploy:GetDeploymentConfig", "codedeploy:ApplicationRevision"),
+		Actions:   jsii.Strings("codedeploy:CreateDeployment", "codedeploy:GetDeploymentConfig", "codedeploy:ApplicationRevision", "codedeploy:GetDeployment", "codedeploy:UpdateDeployment"),
 		Resources: jsii.Strings(*deploymentGroupV1.DeploymentGroupArn()),
 	}))
 
 	// Grant AWS CodePipeline to invoke Lambda
-	// lambdaFunctionV1.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
+	lambdaFunctionV1.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
 	lambdaAlias.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
-
-	// Since the Lambda function takes a secretARN, we need secure it
-	// I don't see the reason for this yet! Not necessary, but will let horse around a bit.
-	lambdaFunctionURL := lambdaFunctionV1.AddFunctionUrl(&awslambda.FunctionUrlOptions{
-		AuthType: awslambda.FunctionUrlAuthType_AWS_IAM,
-	})
 
 	// CODEBUILD LOGIC DEFINITION
 	// Define IAM role for CodeBuild
@@ -134,20 +124,20 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		Resources: jsii.Strings(*githubSecret.SecretArn()),
 	}))
 
-	// CodeBuild Project
 	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
 		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
-			Owner:   jsii.String("30Piraten"),
-			Repo:    jsii.String("pipeline"),
-			Webhook: jsii.Bool(false),
+			Owner: jsii.String("30Piraten"),
+			Repo:  jsii.String("pipeline"),
+			// Webhook: jsii.Bool(false),
 		}),
 		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("codebuild.yaml")),
 		Role:      cloudBuildRoleV1,
 		Environment: &awscodebuild.BuildEnvironment{
-			BuildImage: awscodebuild.LinuxBuildImage_STANDARD_7_0(),
+			ComputeType: awscodebuild.ComputeType_MEDIUM,
+			BuildImage:  awscodebuild.LinuxBuildImage_STANDARD_7_0(),
 			EnvironmentVariables: &map[string]*awscodebuild.BuildEnvironmentVariable{
 				"GITHUB_TOKEN": {
-					Value: githubSecret.SecretArn(), // SecretARN here
+					Value: githubSecret.SecretArn(),
 					Type:  awscodebuild.BuildEnvironmentVariableType_SECRETS_MANAGER,
 				},
 			},
@@ -155,7 +145,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	})
 
 	// CODEPIPELINE LOGIC DEFINITION
-	// CodePipeline Construct
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
 		PipelineName: jsii.String("CodeBuildPipeline"),
 		Stages: &[]*awscodepipeline.StageProps{
@@ -187,7 +176,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			{
 				StageName: jsii.String("Deploy"),
 				Actions: &[]awscodepipeline.IAction{
-					// There was a brawl here, especially with the mismatch with ILambda & IServer type.
 					// Create & update the Lambda function via CloudFormation
 					awscodepipelineactions.NewCloudFormationCreateReplaceChangeSetAction(&awscodepipelineactions.CloudFormationCreateReplaceChangeSetActionProps{
 						ActionName:       jsii.String("PrepareChanges"),
@@ -199,31 +187,15 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 							awscodepipeline.NewArtifact(jsii.String("BuildArtifact")),
 						},
 					}),
-					awscodepipelineactions.NewCloudFormationExecuteChangeSetAction(&awscodepipelineactions.CloudFormationExecuteChangeSetActionProps{
-						ActionName:    jsii.String("UpdateChanges"),
-						StackName:     jsii.String("LambdaDeploymentStack"),
-						ChangeSetName: jsii.String("LambdaDeploymentChangeSet"),
+					awscodepipelineactions.NewLambdaInvokeAction(&awscodepipelineactions.LambdaInvokeActionProps{
+						ActionName: jsii.String("DeployLambda"),
+						Lambda:     lambdaAlias,
+						Inputs:     &[]awscodepipeline.Artifact{awscodepipeline.NewArtifact(jsii.String("BuildArtifact"))},
 					}),
 				},
 			},
 		},
 	})
-
-	// I'll review this later. But the cdk deploy works fine and my
-	// resources via cloudformation works better! Might need custom granular
-	// validation checks
-	// CLOUDWATCH LOGIC DEFINITION
-	// CloudWatch Construct
-	// rollbackAlarm := awscloudwatch.NewAlarm(stack, jsii.String("LambdaDeploymentAlarm"), &awscloudwatch.AlarmProps{
-	// 	Metric:             lambdaFunctionV1.MetricErrors(&awscloudwatch.MetricOptions{}),
-	// 	ComparisonOperator: awscloudwatch.ComparisonOperator_GREATER_THAN_THRESHOLD,
-	// 	Threshold:          jsii.Number(5), // Need to review!
-	// 	EvaluationPeriods:  jsii.Number(1),
-	// 	AlarmName:          jsii.String("LambdaDeploymentFailure"),
-	// })
-
-	// // Attach the Alarm to deployment group
-	// deploymentGroupV1.AddAlarm(rollbackAlarm)
 
 	awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
 		Namespace:  jsii.String("Invocations"),
@@ -234,9 +206,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	})
 
 	// CloudFormation Ouput
-	awscdk.NewCfnOutput(stack, jsii.String("lambdaFunctionURL"), &awscdk.CfnOutputProps{
-		Value: lambdaFunctionURL.Url(),
-	})
 	awscdk.NewCfnOutput(stack, jsii.String("codePipelineNameOutput"), &awscdk.CfnOutputProps{
 		Value: codePipelineV1.PipelineName(),
 	})
