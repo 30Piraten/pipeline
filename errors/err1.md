@@ -45,3 +45,16 @@ Error: Process completed with exit code 1.
 --> arn:aws:sts::***:assumed-role/GitHubActionsCICD/GitHubActions needs the right permissions for cdk deploy: 
 --> ssm:GetParameter needs to be assigned to GitHubActions
 ```
+
+## Error 3:
+```
+CodePipelineCdkStack: deploying... [1/1]
+CodePipelineCdkStack: creating CloudFormation changeset...
+❌  CodePipelineCdkStack failed: ValidationError: Circular dependency between resources: [LambdaDeploymentAlarm2660C436, pipelineHandlerInvokeaogYRCynkngS5YZgSc9k7awYl6Ivokue2Lb6NvKr0R040AC3EBA, pipelineHandlerCurrentVersionB47122C3e411c75096b2187356d7da4663a671ce, pipelineHandlerFunctionUrl1185A30B, pipelineHandlerEventInvokeConfig2FBD08A6, production98A682B9, BlueGreenDeployment5C188134, pipelineHandlerB6D81FA3, pipelineHandlerServiceRoleDefaultPolicyCB643587]
+
+--> use case: was using cloudwatch alarms + codedeploy for BG deployment, and then attaching this deploymentGroupV1 which in turn depends on the 
+	lambdaFunctionV1. 
+--> Two options: 
+	1, custom Lambda function to handle validation checks after a new version of lambda is deployed. This new custom Lambda function can monitor cloudwatch metrics and if validation checks fail this can trigger a rollback by invoking codedeploy API. 
+	2, Use codebuild in-built health checks for now. Its simpler and mostly sufficient, unless granular permissions are needed. 
+```
