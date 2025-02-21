@@ -34,6 +34,8 @@ Then this:
 
 ## Error 2:
 ```
+From GitHubActions Workflow:
+
 Run cdk deploy --app "go run bin/cdk.go" --require-approval never
   
 [Warning at /CodePipelineCdkStack/pipelineV1] V1 pipeline type is implicitly selected when `pipelineType` is not set. If you want to use V2 type, set `PipelineType.V2`. [ack: @aws-cdk/aws-codepipeline:unspecifiedPipelineType]
@@ -48,6 +50,7 @@ Error: Process completed with exit code 1.
 
 ## Error 3:
 ```
+➜ cdk deploy
 CodePipelineCdkStack: deploying... [1/1]
 CodePipelineCdkStack: creating CloudFormation changeset...
 ❌  CodePipelineCdkStack failed: ValidationError: Circular dependency between resources: [LambdaDeploymentAlarm2660C436, pipelineHandlerInvokeaogYRCynkngS5YZgSc9k7awYl6Ivokue2Lb6NvKr0R040AC3EBA, pipelineHandlerCurrentVersionB47122C3e411c75096b2187356d7da4663a671ce, pipelineHandlerFunctionUrl1185A30B, pipelineHandlerEventInvokeConfig2FBD08A6, production98A682B9, BlueGreenDeployment5C188134, pipelineHandlerB6D81FA3, pipelineHandlerServiceRoleDefaultPolicyCB643587]
