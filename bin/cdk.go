@@ -53,19 +53,10 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	}
 	lambdaDir := filepath.Join(filepath.Dir(filename), "lambda")
 
-	// IAM role for Lambda with least privilege
-	lambdaRole := awsiam.NewRole(stack, jsii.String("LambdaExecRole"), &awsiam.RoleProps{
-		AssumedBy: awsiam.NewServicePrincipal(jsii.String("lambda.amazonaws.com"), nil),
-		ManagedPolicies: &[]awsiam.IManagedPolicy{
-			awsiam.ManagedPolicy_FromAwsManagedPolicyName(jsii.String("AWSLambdaBasicExecutionRole")),
-		},
-	})
-
 	// Define the Lambda function
 	lambdaFunctionV1 := awslambda.NewFunction(stack, jsii.String("pipelineHandler"), &awslambda.FunctionProps{
 		Runtime:                awslambda.Runtime_PROVIDED_AL2(),
 		Handler:                jsii.String("bootstrap"),
-		Role:                   lambdaRole,
 		RetryAttempts:          jsii.Number(2),
 		MemorySize:             jsii.Number(1024),
 		Timeout:                awscdk.Duration_Seconds(jsii.Number(30)),
@@ -83,8 +74,9 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 
 	// Define a Lambda Alias for Deployment
 	lambdaAlias := awslambda.NewAlias(stack, jsii.String("production"), &awslambda.AliasProps{
-		AliasName: jsii.String("Live"),
-		Version:   lambdaFunctionV1.CurrentVersion(),
+		AliasName:   jsii.String("Live"),
+		Description: jsii.String("Development alias for Blue/Green deployment"),
+		Version:     lambdaFunctionV1.CurrentVersion(),
 	})
 
 	// CODEDEPLOY LOGIC DEFINITION
@@ -103,7 +95,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		},
 	})
 
-	// LAMBDA IAM ACCESS
 	// Restrict Lambda's access to GitHub secret
 	lambdaFunctionV1.Role().AddToPrincipalPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 		Effect:    awsiam.Effect_ALLOW,
@@ -127,6 +118,29 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		AssumedBy: awsiam.NewServicePrincipal(jsii.String("codebuild.amazonaws.com"), nil),
 	})
 
+	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
+		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
+			Owner: jsii.String("30Piraten"),
+			Repo:  jsii.String("pipeline"),
+		}),
+		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("codebuild.yaml")),
+		Role:      codeBuildRoleV1,
+		Environment: &awscodebuild.BuildEnvironment{
+			// ComputeType: awscodebuild.ComputeType_SMALL,
+			ComputeType: awscodebuild.ComputeType_SMALL,
+
+			BuildImage: awscodebuild.LinuxBuildImage_AMAZON_LINUX_2_3(),
+			// BuildImage: awscodebuild.LinuxBuildImage_FromCodeBuildImageId(jsii.String("aws/codebuild/amazonlinux2-aarch64-standard:2.0")),
+			// BuildImage: awscodebuild.LinuxArmBuildImage_AMAZON_LINUX_2023_STANDARD_2_0(),
+			EnvironmentVariables: &map[string]*awscodebuild.BuildEnvironmentVariable{
+				"GITHUB_TOKEN": {
+					Value: githubSecret.SecretArn(),
+					Type:  awscodebuild.BuildEnvironmentVariableType_SECRETS_MANAGER,
+				},
+			},
+		},
+	})
+
 	// Grant Secrets Manager access to CodeBuild
 	codeBuildRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 		Effect:    awsiam.Effect_ALLOW,
@@ -137,40 +151,13 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	codeBuildRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 		Effect:    awsiam.Effect_ALLOW,
 		Actions:   jsii.Strings("codebuild:StartBuild", "codepipeline:PutJobSuccessResult"),
-		Resources: jsii.Strings("*codeBuildV1.ProjectArn()"),
+		Resources: jsii.Strings(*codeBuildV1.ProjectArn()),
 	}))
-
-	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
-		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
-			Owner: jsii.String("30Piraten"),
-			Repo:  jsii.String("pipeline"),
-		}),
-		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("codebuild.yaml")),
-		Role:      codeBuildRoleV1,
-		Environment: &awscodebuild.BuildEnvironment{
-			ComputeType: awscodebuild.ComputeType_MEDIUM,
-
-			// What are rhe benefits of using ARM-based Graviton?
-			BuildImage: awscodebuild.LinuxBuildImage_FromCodeBuildImageId(jsii.String("aws/codebuild/amazonlinux2-aarch64-standard:2.0")),
-			EnvironmentVariables: &map[string]*awscodebuild.BuildEnvironmentVariable{
-				"GITHUB_TOKEN": {
-					Value: githubSecret.SecretArn(),
-					Type:  awscodebuild.BuildEnvironmentVariableType_SECRETS_MANAGER,
-				},
-			},
-		},
-	})
 
 	// CODEPIPELINE LOGIC DEFINITION
 	codePipelineRoleV1 := awsiam.NewRole(stack, jsii.String("CodePipelineRole"), &awsiam.RoleProps{
 		AssumedBy: awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil),
 	})
-
-	codePipelineRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
-		Effect:    awsiam.Effect_ALLOW,
-		Actions:   jsii.Strings("codeploy:CreateDeployment", "codedeploy:GetDeploymentConfig", "codedeploy:GetDeployment"),
-		Resources: jsii.Strings("*codePipelineV1.PipelineArn()"),
-	}))
 
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
 		PipelineName: jsii.String("CodeBuildPipeline"),
@@ -223,6 +210,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			},
 		},
 	})
+
+	codePipelineRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Effect:    awsiam.Effect_ALLOW,
+		Actions:   jsii.Strings("codeploy:CreateDeployment", "codedeploy:GetDeploymentConfig", "codedeploy:GetDeployment", "codepipeline:GetPipelineExecution", "codepipeline:GetPipelineState", "codepipeline:StartPipelineExecution"),
+		Resources: jsii.Strings(*codePipelineV1.PipelineArn()),
+	}))
 
 	awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
 		Namespace:  jsii.String("Invocations"),
