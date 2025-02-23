@@ -11,6 +11,7 @@ phases:
   build:
     commands:
       - echo Building the project...
+      - echo finalizing build...
       - go build -o main .
 
   post_build:
