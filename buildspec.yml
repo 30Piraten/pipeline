@@ -1,0 +1,29 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      golang: 1.x
+    commands:
+      - echo Installing dependencies...
+      - go mod tidy
+
+  build:
+    commands:
+      - echo Building the project...
+      - echo finalizing build...
+      - go build -o main .
+
+  post_build:
+    commands:
+      - echo Building Lambda function...
+      - cd lambda
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bootstrap pipeline.go
+      - chmod +x bootstrap
+      - zip -X lambda_function.zip bootstrap
+      - echo Lambda deployment package created.
+
+artifacts:
+  files:
+    - '**/*'
+  discard-paths: no
