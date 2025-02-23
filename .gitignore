@@ -50,4 +50,4 @@ go.work.sum
 bin/.env 
 
 // others
-others
+others/*
