@@ -65,3 +65,12 @@ CodePipelineCdkStack: creating CloudFormation changeset...
     	Value: rollbackAlarm.AlarmArn(),
 })
 ```
+
+## Error 4:
+```
+➜ cdk deploy
+Failed resources:
+CodePipelineCdkStack | 1:15:05 PM | CREATE_FAILED        | AWS::IAM::Role                   | LambdaExecRole (LambdaExecRoleA88165BD) Resource handler returned message: "Policy arn:aws:iam::aws:policy/AWSLambdaBasicExecutionRole does not exist or is not attachable. (Service: Iam, Status Code: 404, Request ID: 47e2d22f-38ad-490b-8075-3da47be02387)" (RequestToken: a8674483-8afc-0735-6e09-ea5ee437bfda, HandlerErrorCode: NotFound)
+❌  CodePipelineCdkStack failed: _ToolkitError: The stack named CodePipelineCdkStack failed creation, it may need to be manually deleted from the AWS console: ROLLBACK_COMPLETE: Resource handler returned message: "Policy arn:aws:iam::aws:policy/AWSLambdaBasicExecutionRole does not exist or is not attachable. (Service: Iam, Status Code: 404, Request ID: 47e2d22f-38ad-490b-8075-3da47be02387)" (RequestToken: a8674483-8afc-0735-6e09-ea5ee437bfda, HandlerErrorCode: NotFound)
+
+```
