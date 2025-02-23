@@ -118,15 +118,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		AssumedBy: awsiam.NewServicePrincipal(jsii.String("codebuild.amazonaws.com"), nil),
 	})
 
-	// Test: codeBuild can't find file
-	codeBuildFile := filepath.Join(filepath.Dir("build"))
-
 	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
 		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
 			Owner: jsii.String("30Piraten"),
 			Repo:  jsii.String("pipeline"),
 		}),
-		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String(codeBuildFile)),
+		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("buildspec.yml")),
 		Role:      codeBuildRoleV1,
 		Environment: &awscodebuild.BuildEnvironment{
 			// ComputeType: awscodebuild.ComputeType_SMALL,
