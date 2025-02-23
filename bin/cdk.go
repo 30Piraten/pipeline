@@ -190,12 +190,13 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			{
 				StageName: jsii.String("Deploy"),
 				Actions: &[]awscodepipeline.IAction{
+					// This needs rework!
 					// Create & update the Lambda function via CloudFormation
 					awscodepipelineactions.NewCloudFormationCreateReplaceChangeSetAction(&awscodepipelineactions.CloudFormationCreateReplaceChangeSetActionProps{
-						ActionName:       jsii.String("PrepareChanges"),
-						StackName:        jsii.String("LambdaDeploymentStack"),
-						ChangeSetName:    jsii.String("LambdaDeploymentChangeSet"),
-						TemplatePath:     awscodepipeline.NewArtifact(jsii.String("BuildArtifact")).AtPath(jsii.String("template.yaml")),
+						ActionName:    jsii.String("PrepareChanges"),
+						StackName:     jsii.String("LambdaDeploymentStack"),
+						ChangeSetName: jsii.String("LambdaDeploymentChangeSet"),
+						// TemplatePath:     awscodepipeline.NewArtifact(jsii.String("BuildArtifact")).AtPath(jsii.String("template.yaml")), --> Template file is not needed!
 						AdminPermissions: jsii.Bool(true),
 						ExtraInputs: &[]awscodepipeline.Artifact{
 							awscodepipeline.NewArtifact(jsii.String("BuildArtifact")),
