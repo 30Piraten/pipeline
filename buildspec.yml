@@ -6,13 +6,14 @@ phases:
       golang: 1.x
     commands:
       - echo Installing dependencies...
+      - cd bin
       - go mod tidy
 
   build:
     commands:
       - echo Building the project...
       - echo finalizing build...
-      - go build -o main .
+      - go build
 
   post_build:
     commands:
