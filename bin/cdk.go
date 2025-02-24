@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscodepipelineactions"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
 	"github.com/aws/jsii-runtime-go"
@@ -29,7 +30,7 @@ type PipelineBuildV1Props struct {
 func checkEnv(key string) string {
 	value := os.Getenv(key)
 	if value == "" {
-		log.Fatalf("WARNING: %s environment variable is required!", key)
+		log.Printf("WARNING: %s environment variable is required!", key)
 	}
 	return value
 }
@@ -68,14 +69,16 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		},
 		Code: awslambda.Code_FromAsset(jsii.String(lambdaDir), &awss3assets.AssetOptions{}),
 		Environment: &map[string]*string{
-			"GITHUB_TOKEN": githubSecret.SecretArn(),
+			"GITHUB_TOKEN":          githubSecret.SecretArn(),
+			"APPLICATION_NAME":      jsii.String("LambdaDeployApp"),
+			"DEPLOYMENT_GROUP_NAME": jsii.String("LambdaDeploymentGroup"),
 		},
 	})
 
 	// Define a Lambda Alias for Deployment
 	lambdaAlias := awslambda.NewAlias(stack, jsii.String("production"), &awslambda.AliasProps{
 		AliasName:   jsii.String("Live"),
-		Description: jsii.String("Development alias for Blue/Green deployment"),
+		Description: jsii.String("Lambda Alias"),
 		Version:     lambdaFunctionV1.CurrentVersion(),
 	})
 
@@ -99,7 +102,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	lambdaFunctionV1.Role().AddToPrincipalPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 		Effect:    awsiam.Effect_ALLOW,
 		Actions:   jsii.Strings("secretsmanager:GetSecretValue"),
-		Resources: jsii.Strings(*githubSecret.SecretArn()), // SecretARN here
+		Resources: jsii.Strings(*githubSecret.SecretArn()),
 	}))
 
 	lambdaFunctionV1.Role().AddToPrincipalPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
@@ -109,7 +112,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	}))
 
 	// Grant AWS CodePipeline to invoke Lambda
-	// lambdaFunctionV1.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
 	lambdaAlias.GrantInvoke(awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil))
 
 	// CODEBUILD LOGIC DEFINITION
@@ -126,12 +128,9 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("cdk/buildspec.yml")),
 		Role:      codeBuildRoleV1,
 		Environment: &awscodebuild.BuildEnvironment{
-			// ComputeType: awscodebuild.ComputeType_SMALL,
 			ComputeType: awscodebuild.ComputeType_SMALL,
 
 			BuildImage: awscodebuild.LinuxBuildImage_AMAZON_LINUX_2_3(),
-			// BuildImage: awscodebuild.LinuxBuildImage_FromCodeBuildImageId(jsii.String("aws/codebuild/amazonlinux2-aarch64-standard:2.0")),
-			// BuildImage: awscodebuild.LinuxArmBuildImage_AMAZON_LINUX_2023_STANDARD_2_0(),
 			EnvironmentVariables: &map[string]*awscodebuild.BuildEnvironmentVariable{
 				"GITHUB_TOKEN": {
 					Value: githubSecret.SecretArn(),
@@ -154,13 +153,29 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		Resources: jsii.Strings(*codeBuildV1.ProjectArn()),
 	}))
 
+	codeBuildRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Effect:    awsiam.Effect_ALLOW,
+		Actions:   jsii.Strings("logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"),
+		Resources: jsii.Strings("*"),
+	}))
+
 	// CODEPIPELINE LOGIC DEFINITION
 	codePipelineRoleV1 := awsiam.NewRole(stack, jsii.String("CodePipelineRole"), &awsiam.RoleProps{
 		AssumedBy: awsiam.NewServicePrincipal(jsii.String("codepipeline.amazonaws.com"), nil),
 	})
 
+	// S3 bucket for Artifact
+	artifactS3Bucket := awss3.NewBucket(stack, jsii.String("ArtifactBucket"), &awss3.BucketProps{
+		AutoDeleteObjects: jsii.Bool(true),
+		RemovalPolicy:     awscdk.RemovalPolicy_DESTROY,
+	})
+
+	sourceArtifact := awscodepipeline.NewArtifact(jsii.String("SourceArtifact"))
+	buildArtifact := awscodepipeline.NewArtifact(jsii.String("BuildArtifact"))
+
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
-		PipelineName: jsii.String("CodeBuildPipeline"),
+		PipelineName:   jsii.String("CodeBuildPipeline"),
+		ArtifactBucket: artifactS3Bucket,
 		Stages: &[]*awscodepipeline.StageProps{
 			{
 				StageName: jsii.String("Source"),
@@ -170,8 +185,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 						Owner:      jsii.String("30Piraten"),
 						Repo:       jsii.String("pipeline"),
 						Branch:     jsii.String("main"),
-						OauthToken: oauthTokenSecret, // Passed here
-						Output:     awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
+						OauthToken: oauthTokenSecret,
+						Output:     sourceArtifact,
 						Trigger:    awscodepipelineactions.GitHubTrigger_WEBHOOK,
 					}),
 				},
@@ -182,40 +197,54 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 					awscodepipelineactions.NewCodeBuildAction(&awscodepipelineactions.CodeBuildActionProps{
 						ActionName: jsii.String("pipelineBuild"),
 						Project:    codeBuildV1,
-						Input:      awscodepipeline.NewArtifact(jsii.String("SourceArtifact")),
-						Outputs:    &[]awscodepipeline.Artifact{awscodepipeline.NewArtifact(jsii.String("BuildArtifact"))},
+						Input:      sourceArtifact,
+						Outputs:    &[]awscodepipeline.Artifact{buildArtifact},
 					}),
 				},
 			},
 			{
+				// For the Deploy stage. The main Lambda function (lambdaFunctionV1)
+				// is invoked here. This will execute the application logic within lambdaFunctionV1.
+				// It is important to note, that this does not call codedeploy. The trigger lambda
+				// function must be called to do this.
+				// The trigger lambda function is defined in the cdk/bin/pipeline.go, which is
+				// packaged with the provided.AL2 runtime.
 				StageName: jsii.String("Deploy"),
 				Actions: &[]awscodepipeline.IAction{
-					// This needs rework!
-					// Create & update the Lambda function via CloudFormation
-					awscodepipelineactions.NewCloudFormationCreateReplaceChangeSetAction(&awscodepipelineactions.CloudFormationCreateReplaceChangeSetActionProps{
-						ActionName:    jsii.String("PrepareChanges"),
-						StackName:     jsii.String("LambdaDeploymentStack"),
-						ChangeSetName: jsii.String("LambdaDeploymentChangeSet"),
-						// TemplatePath:     awscodepipeline.NewArtifact(jsii.String("BuildArtifact")).AtPath(jsii.String("template.yaml")), --> Template file is not needed!
-						AdminPermissions: jsii.Bool(true),
-						ExtraInputs: &[]awscodepipeline.Artifact{
-							awscodepipeline.NewArtifact(jsii.String("BuildArtifact")),
-						},
-					}),
 					awscodepipelineactions.NewLambdaInvokeAction(&awscodepipelineactions.LambdaInvokeActionProps{
 						ActionName: jsii.String("DeployLambda"),
-						Lambda:     lambdaAlias,
-						Inputs:     &[]awscodepipeline.Artifact{awscodepipeline.NewArtifact(jsii.String("BuildArtifact"))},
+						Inputs:     &[]awscodepipeline.Artifact{buildArtifact},
+						Lambda:     lambdaFunctionV1,
 					}),
 				},
 			},
 		},
 	})
 
+	// Grant necessary permissions
+	artifactS3Bucket.GrantReadWrite(codePipelineRoleV1, nil)
 	codePipelineRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 		Effect:    awsiam.Effect_ALLOW,
-		Actions:   jsii.Strings("codeploy:CreateDeployment", "codedeploy:GetDeploymentConfig", "codedeploy:GetDeployment", "codepipeline:GetPipelineExecution", "codepipeline:GetPipelineState", "codepipeline:StartPipelineExecution"),
+		Actions:   jsii.Strings("iam:PassRole"),
+		Resources: jsii.Strings(*deploymentGroupV1.Role().RoleArn()),
+	}))
+
+	codePipelineRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Effect: awsiam.Effect_ALLOW,
+		Actions: jsii.Strings(
+			"codeploy:CreateDeployment",
+			"codedeploy:GetDeploymentConfig",
+			"codedeploy:GetDeployment",
+			"codepipeline:GetPipelineExecution",
+			"codepipeline:GetPipelineState",
+			"codepipeline:StartPipelineExecution"),
 		Resources: jsii.Strings(*codePipelineV1.PipelineArn()),
+	}))
+
+	codePipelineRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Effect:    awsiam.Effect_ALLOW,
+		Actions:   jsii.Strings("iam:PassRole"),
+		Resources: jsii.Strings(*codePipelineRoleV1.RoleArn()),
 	}))
 
 	awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
@@ -258,8 +287,6 @@ func main() {
 func env() *awscdk.Environment {
 	return &awscdk.Environment{
 		Account: jsii.String(checkEnv("ACCOUNT_ID")),
-		// Region:  jsii.String(checkEnv("ACCOUNT_REGION")),
-		// Account: jsii.String(os.Getenv("ACCOUNT_ID")),
-		Region: jsii.String("us-east-1"),
+		Region:  jsii.String("us-east-1"),
 	}
 }
