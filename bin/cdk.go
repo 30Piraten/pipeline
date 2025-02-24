@@ -207,7 +207,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 				// is invoked here. This will execute the application logic within lambdaFunctionV1.
 				// It is important to note, that this does not call codedeploy. The trigger lambda
 				// function must be called to do this.
-				// The trigger lambda function is defined in the cdk/bin/pipeline.go, which is
+				// The trigger lambda function is defined in the bin/lambda/pipeline.go, which is
 				// packaged with the provided.AL2 runtime.
 				StageName: jsii.String("Deploy"),
 				Actions: &[]awscodepipeline.IAction{
