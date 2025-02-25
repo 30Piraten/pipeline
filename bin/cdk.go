@@ -17,10 +17,9 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
+	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 	"github.com/joho/godotenv"
-
-	"github.com/aws/constructs-go/constructs/v10"
 )
 
 type PipelineBuildV1Props struct {
