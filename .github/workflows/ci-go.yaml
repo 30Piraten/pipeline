@@ -65,7 +65,7 @@ jobs:
 
       # Trigger AWS CodeBuild for Lambda Build
       - name: Trigger AWS CodeBuild
-        run: aws codebuild start-build --project-name "CodeBuildV1"
+        run: aws codebuild start-build --project-name CodeBuildV1
   
       # Trigger AWS CodePipeline - Starts new deployment
       - name: Trigger AWS CodePipeline
