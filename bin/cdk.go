@@ -297,7 +297,9 @@ func main() {
 
 func env() *awscdk.Environment {
 	return &awscdk.Environment{
-		Account: jsii.String(os.Getenv("ACCOUNT_ID")),
-		Region:  jsii.String(os.Getenv("AWS_REGION")),
+		// Account: jsii.String(os.Getenv("ACCOUNT_ID")),
+		// Region:  jsii.String(os.Getenv("AWS_REGION")),
+		Account: jsii.String("445567116635"),
+		Region:  jsii.String("us-east-1"),
 	}
 }
