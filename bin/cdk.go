@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,20 +18,20 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
-	"github.com/joho/godotenv"
 )
 
 type PipelineBuildV1Props struct {
 	awscdk.StackProps
 }
 
-func checkEnv(key string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		log.Printf("WARNING: %s environment variable is required!", key)
-	}
-	return value
-}
+// checkEnv validates .env variables.
+// func checkEnv(key string) string {
+// 	value := os.Getenv(key)
+// 	if value == "" {
+// 		log.Printf("WARNING: %s environment variable is required!", key)
+// 	}
+// 	return value
+// }
 
 func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBuildV1Props) awscdk.Stack {
 
@@ -121,8 +120,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 
 	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
 		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
-			Owner: jsii.String("30Piraten"),
-			Repo:  jsii.String("pipeline"),
+			Owner: jsii.String(os.Getenv("ACC_GITHUB_OWNER")),
+			Repo:  jsii.String(os.Getenv("ACC_GITHUB_REPO")),
 		}),
 		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("cdk/buildspec.yml")),
 		Role:      codeBuildRoleV1,
@@ -268,10 +267,10 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 func main() {
 	defer jsii.Close()
 
-	// // Load .env variables one time
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Warning: .env file not found or could not be loaded", err)
-	}
+	// Load .env variables one time
+	// if err := godotenv.Load(); err != nil {
+	// 	log.Fatal("Warning: .env file not found or could not be loaded", err)
+	// }
 
 	app := awscdk.NewApp(nil)
 	NewPipelineBuildV1(app, "CodePipelineCdkStack", &PipelineBuildV1Props{
@@ -285,7 +284,7 @@ func main() {
 
 func env() *awscdk.Environment {
 	return &awscdk.Environment{
-		Account: jsii.String(checkEnv("ACCOUNT_ID")),
-		Region:  jsii.String("us-east-1"),
+		Account: jsii.String(os.Getenv("ACCOUNT_ID")),
+		Region:  jsii.String(os.Getenv("AWS_REGION")),
 	}
 }
