@@ -59,6 +59,9 @@ jobs:
         run: cdk synth --app "go run bin/cdk.go"
         env:
           ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+          ACC_GITHUB_OWNER: ${{ secrets.ACC_GITHUB_OWNER }}
+          ACC_GITHUB_REPO: ${{ secrets.ACC_GITHUB_REPO }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
 
       # Trigger AWS CodeBuild for Lambda Build
       - name: Trigger AWS CodeBuild
