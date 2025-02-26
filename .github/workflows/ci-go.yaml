@@ -62,21 +62,22 @@ jobs:
           ACC_GITHUB_OWNER: ${{ secrets.ACC_GITHUB_OWNER }}
           ACC_GITHUB_REPO: ${{ secrets.ACC_GITHUB_REPO }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
-
-      - name: Get CodeBuild Project name 
+        
+      - name: Get CodeBuild and CodePipeline Names
         run: |
-          CODEBUILD_PROJECT=$(aws codebuild list-projects --output text | grep CodeBuildV1 | head -1)
+          # Get CodeBuild Project Name
+          CODEBUILD_PROJECT=$(aws codebuild list-projects --query "projects[?starts_with(@, 'CodeBuildV1')]" --output text | tr -d '[:space:]')
+          echo "Extracted CodeBuild Project: $CODEBUILD_PROJECT"
           echo "CODEBUILD_PROJECT=$CODEBUILD_PROJECT" >> $GITHUB_ENV
-          echo "Found CodeBuild project: $CODEBUILD_PROJECT"
-
-          CODEPIPELINE_NAME=$(aws codepipeline list-pipelines --output text | grep CodePipeline | head -1)
+        
+          # Get CodePipeline Name
+          CODEPIPELINE_NAME=$(aws codepipeline list-pipelines --query "pipelines[?starts_with(name, 'CodePipeline')].name" --output text | tr -d[:space:]')
+          echo "Extracted CodePipeline Name: $CODEPIPELINE_NAME"
           echo "CODEPIPELINE_NAME=$CODEPIPELINE_NAME" >> $GITHUB_ENV
-          echo "Found CodePipeline name: $CODEPIPELINE_NAME"
-
-      # Trigger AWS CodeBuild 
+        
       - name: Trigger AWS CodeBuild
         run: aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --region "$AWS_REGION"
-  
-      # Trigger AWS CodePipeline - Starts new deployment
+        
       - name: Trigger AWS CodePipeline
-        run: aws codepipeline start-pipeline-execution --name $CODEPIPELINE_NAME
+        run: aws codepipeline start-pipeline-execution --name "$CODEPIPELINE_NAME"
+        
