@@ -1,4 +1,4 @@
-# AWS Lambda Pipeline Deployment with CDK
+# Project Name: AWS CDK - CI/CD Pipeline Automation
 
 This project provides an automated infrastructure deployment solution for AWS Lambda functions using the AWS Cloud Development Kit (CDK) with Go. It streamlines the process of building, packaging, and deploying Lambda functions through AWS CodeBuild integration.
 
