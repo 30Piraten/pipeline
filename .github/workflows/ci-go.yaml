@@ -65,7 +65,7 @@ jobs:
 
       - name: Get CodeBuild Project name 
         run: |
-          PROJECT_NAME: ${aws codebuild list-project --query "projects[?contains(@, 'CodeBuildV1')]" --output text}
+          PROJECT_NAME: $(aws codebuild list-projects --query "projects[?contains(@, 'CodeBuildV1')]" --output text)
           echo "Project_Name: $PROJECT_NAME"
           echo "PROJECT_NAME=$PROJECT_NAME" >> $GITHUB_ENV 
 
