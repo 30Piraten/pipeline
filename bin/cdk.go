@@ -119,8 +119,18 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			"codedeploy:GetDeploymentConfig",
 			"codedeploy:ApplicationRevision",
 			"codedeploy:GetDeployment",
-			"codedeploy:UpdateDeployment"),
+			"codedeploy:UpdateDeployment",
+		),
 		Resources: jsii.Strings(*deploymentGroupV1.DeploymentGroupArn()),
+	}))
+
+	lambdaFunctionV1.Role().AddToPrincipalPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Effect: awsiam.Effect_ALLOW,
+		Actions: jsii.Strings(
+			"codepipeline:PutJobSuccessResult",
+			"codepipeline:PutJobFailureResult",
+		),
+		Resources: jsii.Strings("*"),
 	}))
 
 	// Allow CodePipeline to invoke Lambda
@@ -134,11 +144,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	// Set up CodeBuild project
 	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
 		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
-			Owner: jsii.String(os.Getenv("ACC_GITHUB_OWNER")),
-			Repo:  jsii.String(os.Getenv("ACC_GITHUB_REPO")),
+			Owner: jsii.String("30Piraten"),
+			Repo:  jsii.String("pipeline"),
 		}),
 		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("cdk/buildspec.yml")),
 		Role:      codeBuildRoleV1,
+		// ProjectName: jsii.String("CodeBuildProjectV1"),
 		Environment: &awscodebuild.BuildEnvironment{
 			ComputeType: awscodebuild.ComputeType_SMALL,
 			BuildImage:  awscodebuild.LinuxBuildImage_AMAZON_LINUX_2_3(),
@@ -297,9 +308,9 @@ func main() {
 
 func env() *awscdk.Environment {
 	return &awscdk.Environment{
-		Account: jsii.String(os.Getenv("ACCOUNT_ID")),
+		// Account: jsii.String(os.Getenv("ACCOUNT_ID")),
 		// Region:  jsii.String(os.Getenv("AWS_REGION")),
-
-		Region: jsii.String("us-east-1"),
+		Account: jsii.String(os.Getenv("ACCOUNT_ID")),
+		Region:  jsii.String("us-east-1"),
 	}
 }
