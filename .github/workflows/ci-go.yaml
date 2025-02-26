@@ -71,7 +71,7 @@ jobs:
           echo "CODEBUILD_PROJECT=$CODEBUILD_PROJECT" >> $GITHUB_ENV
         
           # Get CodePipeline Name
-          CODEPIPELINE_NAME=$(aws codepipeline list-pipelines --query "pipelines[?starts_with(name, 'CodePipeline')].name" --output text | tr -d '[:space:]')
+          CODEPIPELINE_NAME=$(aws codepipeline list-pipelines --query "pipelines[?starts_with(name, 'CodeBuildPipeline')].name" --output text | tr -d '[:space:]')
           echo "Extracted CodePipeline Name: $CODEPIPELINE_NAME"
           echo "CODEPIPELINE_NAME=$CODEPIPELINE_NAME" >> $GITHUB_ENV
 
