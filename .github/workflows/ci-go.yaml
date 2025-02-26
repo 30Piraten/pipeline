@@ -65,9 +65,9 @@ jobs:
 
       - name: Get CodeBuild Project name 
         run: |
-          PROJECT_NAME=$(aws codebuild list-projects --query "projects[?contains(@, 'CodeBuildV1')]" --output text)
-          echo "Project_Name: $PROJECT_NAME"
-          echo "PROJECT_NAME=$PROJECT_NAME" >> $GITHUB_ENV 
+          PROJECT_NAME=$(aws codebuild list-projects --output text | grep CodeBuildV1 | head -1)
+          echo "PROJECT_NAME=$PROJECT_NAME" >> $GITHUB_ENV
+          echo "Found project: $PROJECT_NAME"
 
       # Trigger AWS CodeBuild for Lambda Build
       - name: Trigger AWS CodeBuild
