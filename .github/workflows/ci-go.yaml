@@ -65,14 +65,18 @@ jobs:
 
       - name: Get CodeBuild Project name 
         run: |
-          PROJECT_NAME=$(aws codebuild list-projects --output text | grep CodeBuildV1 | head -1)
-          echo "PROJECT_NAME=$PROJECT_NAME" >> $GITHUB_ENV
-          echo "Found project: $PROJECT_NAME"
+          CODEBUILD_PROJECT=$(aws codebuild list-projects --output text | grep CodeBuildV1 | head -1)
+          echo "CODEBUILD_PROJECT=$CODEBUILD_PROJECT" >> $GITHUB_ENV
+          echo "Found CodeBuild project: $CODEBUILD_PROJECT"
 
-      # Trigger AWS CodeBuild for Lambda Build
+          CODEPIPELINE_NAME=$(aws codepipeline list-pipelines --output text | grep CodePipeline | head -1)
+          echo "CODEPIPELINE_NAME=$CODEPIPELINE_NAME" >> $GITHUB_ENV
+          echo "Found CodePipeline name: $CODEPIPELINE_NAME"
+
+      # Trigger AWS CodeBuild 
       - name: Trigger AWS CodeBuild
-        run: aws codebuild start-build --project-name CodeBuildV1
+        run: aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --region "$AWS_REGION"
   
       # Trigger AWS CodePipeline - Starts new deployment
       - name: Trigger AWS CodePipeline
-        run: aws codepipeline start-pipeline-execution --name pipelineV1
+        run: aws codepipeline start-pipeline-execution --name $CODEPIPELINE_NAME
