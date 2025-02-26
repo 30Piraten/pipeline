@@ -63,6 +63,12 @@ jobs:
           ACC_GITHUB_REPO: ${{ secrets.ACC_GITHUB_REPO }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
 
+      - name: Get CodeBuild Project name 
+        run: |
+          PROJECT_NAME: ${aws codebuild list-project --query "projects[?contains(@, 'CodeBuildV1')] --output text}
+          echo "Project_Name: $PROJECT_NAME"
+          echo "PROJECT_NAME=$PROJECT_NAME" >> $GITHUB_ENV 
+
       # Trigger AWS CodeBuild for Lambda Build
       - name: Trigger AWS CodeBuild
         run: aws codebuild start-build --project-name CodeBuildV1
