@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -128,8 +129,8 @@ func monitorDeployment(ctx context.Context, deploymentID string) error {
 func handler(ctx context.Context, event CodePipelineEvent) error {
 	// We can also log the full event for debugging (testing).
 	// This isn't adviced for production stage.
-	// eventJSON, _ := json.MarshalIndent(event, "", "  ")
-	// log.Printf("Received event: %s", eventJSON)
+	eventJSON, _ := json.MarshalIndent(event, "", "  ")
+	log.Printf("Received event: %s", eventJSON)
 
 	// We extract the CodePipeline job ID from the event
 	jobID := event.CodePipelineJob.ID
