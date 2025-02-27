@@ -182,7 +182,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	artifactBucketV1 := awss3.NewBucket(stack, jsii.String("ArtifactBucket"), &awss3.BucketProps{
 		AutoDeleteObjects: jsii.Bool(true),
 		RemovalPolicy:     awscdk.RemovalPolicy_DESTROY,
-		// BucketName:        jsii.String("pipeline-artifact-bucket-v1"),
+		BucketName:        jsii.String("pipeline-artifact-bucket-v1"),
 	})
 
 	// Here, we define artifacts for the pipeline stages
