@@ -24,15 +24,6 @@ type PipelineBuildV1Props struct {
 	awscdk.StackProps
 }
 
-// checkEnv validates .env variables.
-// func checkEnv(key string) string {
-// 	value := os.Getenv(key)
-// 	if value == "" {
-// 		log.Printf("WARNING: %s environment variable is required!", key)
-// 	}
-// 	return value
-// }
-
 // NewPipelineBuildV1 creates a new CDK stack that sets up the CI/CD pipeline
 func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBuildV1Props) awscdk.Stack {
 	// Stack initialization with props
@@ -200,7 +191,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 
 	// Create the CodePipeline with Source, Build, and Deploy stages
 	codePipelineV1 := awscodepipeline.NewPipeline(stack, jsii.String("pipelineV1"), &awscodepipeline.PipelineProps{
-		PipelineName:   jsii.String("CodeBuildPipeline"),
+		PipelineName:   jsii.String("CodeBuildPipelineV1"),
 		ArtifactBucket: artifactBucketV1,
 		Stages: &[]*awscodepipeline.StageProps{
 			{
