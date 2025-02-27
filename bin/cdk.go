@@ -148,9 +148,9 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			Owner: jsii.String("30Piraten"),
 			Repo:  jsii.String("pipeline"),
 		}),
-		BuildSpec: awscodebuild.BuildSpec_FromSourceFilename(jsii.String("cdk/buildspec.yml")),
-		Role:      codeBuildRoleV1,
-		// ProjectName: jsii.String("CodeBuildProjectV1"),
+		BuildSpec:   awscodebuild.BuildSpec_FromSourceFilename(jsii.String("cdk/buildspec.yml")),
+		Role:        codeBuildRoleV1,
+		ProjectName: jsii.String("CodeBuildProjectV1"),
 		Environment: &awscodebuild.BuildEnvironment{
 			ComputeType: awscodebuild.ComputeType_SMALL,
 			BuildImage:  awscodebuild.LinuxBuildImage_AMAZON_LINUX_2_3(),
