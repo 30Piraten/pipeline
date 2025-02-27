@@ -89,8 +89,9 @@ panic: Invalid S3 bucket name (value: cdk-hnb659fds-assets--)
   			aws s3 rb s3://$bucket --force
 		done
 
-	--> The core issue has to do with either the AWS region or account ID. If not specified or if you are 
-	using .env, make sure the variables are declared and used properly. 
+		Remember to run: cdk bootstrap (as the initial bucket for your cdk will be deleted)
+
+	--> The core issue has to do with either the AWS region or account ID. If not specified or if you are using .env, make sure the variables are declared and used properly. 
 
 	--> You can also use a custom synthensizer, this helps: ([custom synth](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping-troubleshoot.html))
 ```
@@ -100,5 +101,5 @@ CodePipelineCdkStack: fail: No bucket named 'cdk-hnb659fds-assets-445567116635-u
 
 --> This occurs if the CDK was bootstrapped with the wrong AWS region. You can resolve it, with the folllowing:
 --> Delete the CDKToolKit: aws cloudformation delete-stack --stack-name CDKToolkit
---> Rerun the bootstrp: cdk bootstrap aws://445567116635/us-east-1
+--> Rerun the bootstrp: cdk bootstrap aws://4----------5/us-east-1
 ```
