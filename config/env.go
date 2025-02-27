@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-func checkEnv(key string) string {
+func CheckEnv(key string) string {
 	value := os.Getenv(key)
 	if value == "" {
 		log.Fatalf("WARNING: %s environment variable is required!", key)
