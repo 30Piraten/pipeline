@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -22,6 +23,16 @@ import (
 
 type PipelineBuildV1Props struct {
 	awscdk.StackProps
+}
+
+// Validate env variables
+func checkEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("WARNING: %s environment variable is required!", key)
+	}
+
+	return value
 }
 
 // NewPipelineBuildV1 creates a new CDK stack that sets up the CI/CD pipeline
@@ -136,8 +147,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	// We set up the CodeBuild project
 	codeBuildV1 := awscodebuild.NewProject(stack, jsii.String("CodeBuildV1"), &awscodebuild.ProjectProps{
 		Source: awscodebuild.Source_GitHub(&awscodebuild.GitHubSourceProps{
-			Owner: jsii.String("30Piraten"),
-			Repo:  jsii.String("pipeline"),
+			Owner: jsii.String(os.Getenv("GITHUB_OWNER")),
+			Repo:  jsii.String(os.Getenv("GITHUB_REPO")),
 		}),
 		BuildSpec:   awscodebuild.BuildSpec_FromSourceFilename(jsii.String("cdk/buildspec.yml")),
 		Role:        codeBuildRoleV1,
@@ -199,9 +210,9 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 				Actions: &[]awscodepipeline.IAction{
 					awscodepipelineactions.NewGitHubSourceAction(&awscodepipelineactions.GitHubSourceActionProps{
 						ActionName: jsii.String("pipelineSource"),
-						Owner:      jsii.String("30Piraten"),
-						Repo:       jsii.String("pipeline"),
-						Branch:     jsii.String("main"),
+						Owner:      jsii.String(checkEnv("GITHUB_OWNER")),
+						Repo:       jsii.String(checkEnv("GITHUB_REPO")),
+						Branch:     jsii.String(checkEnv("GITHUB_BRANCH")),
 						OauthToken: oauthTokenSecret,
 						Output:     sourceArtifact,
 						Trigger:    awscodepipelineactions.GitHubTrigger_WEBHOOK,
@@ -266,10 +277,18 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 
 	// Here, we create CloudWatch metric for Lambda invocations
 	awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
-		Namespace:  jsii.String("Invocations"),
-		MetricName: jsii.String("AWS/Lambda"),
+		Namespace:  jsii.String("AWS/Lambda"),
+		MetricName: jsii.String("Invocations"),
 		DimensionsMap: &map[string]*string{
 			"FunctionName": lambdaFunctionV1.FunctionName(),
+		},
+	})
+	// Here, we create CloudWatch metric for Codebuild
+	awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
+		Namespace:  jsii.String("AWS/CodeBuild"),
+		MetricName: jsii.String("BuildsSucceeded"),
+		DimensionsMap: &map[string]*string{
+			"ProjectName": codeBuildV1.ProjectName(),
 		},
 	})
 
@@ -300,9 +319,7 @@ func main() {
 
 func env() *awscdk.Environment {
 	return &awscdk.Environment{
-		Account: jsii.String(os.Getenv("ACCOUNT_ID")),
-		// Region:  jsii.String(os.Getenv("AWS_REGION")),
-
-		Region: jsii.String("us-east-1"),
+		Account: jsii.String(checkEnv("ACCOUNT_ID")),
+		Region:  jsii.String(checkEnv("AWS_REGION")),
 	}
 }
