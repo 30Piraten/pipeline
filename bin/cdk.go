@@ -45,7 +45,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	stack := awscdk.NewStack(scope, &id, &sprops)
 
 	// Configure the stack synthesizer with custom qualifier
-	// This is not necessary, but it need it for something else!
 	synth := awscdk.NewDefaultStackSynthesizer(&awscdk.DefaultStackSynthesizerProps{
 		Qualifier: jsii.String("pipeline-artifact-bucket-v1"),
 	})

@@ -89,7 +89,7 @@ func getGitHubToken(ctx context.Context) (string, error) {
 	return *result.SecretString, nil
 }
 
-// Here, monitorDeployment waits for the deployment to reach a terminal state
+// monitorDeployment waits for the deployment to reach a terminal state
 // This state could be (failed, succeeded or stopped)
 func monitorDeployment(ctx context.Context, deploymentID string) error {
 	log.Printf("Monitoring deployment status for: %s", deploymentID)
