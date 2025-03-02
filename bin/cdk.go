@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awssqs"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 )
@@ -55,6 +56,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	githubSecret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("GitHubTokenSecret"), jsii.String("token"))
 	oauthTokenSecret := githubSecret.SecretValue()
 
+	// Create Dead Letter Queue for Lambda function
+	deadLetterQueue := awssqs.NewQueue(stack, jsii.String("LambdaDLQ"), &awssqs.QueueProps{
+		QueueName:       jsii.String("lambda-deploy-dlq"),
+		RetentionPeriod: awscdk.Duration_Days(jsii.Number(7)),
+	})
+
 	// Get the Lambda function directory path
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
@@ -68,7 +75,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		Handler:                jsii.String("bootstrap"),
 		RetryAttempts:          jsii.Number(2),
 		MemorySize:             jsii.Number(1024),
-		Timeout:                awscdk.Duration_Seconds(jsii.Number(30)),
+		Timeout:                awscdk.Duration_Minutes(jsii.Number(6)),
 		Architecture:           awslambda.Architecture_X86_64(),
 		DeadLetterQueueEnabled: jsii.Bool(true),
 		CurrentVersionOptions: &awslambda.VersionOptions{
@@ -77,10 +84,12 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		},
 		Code: awslambda.Code_FromAsset(jsii.String(lambdaDir), &awss3assets.AssetOptions{}),
 		Environment: &map[string]*string{
-			"GITHUB_TOKEN":          githubSecret.SecretArn(),
-			"APPLICATION_NAME":      jsii.String("LambdaDeployApp"),
-			"DEPLOYMENT_GROUP_NAME": jsii.String("LambdaDeploymentGroup"),
+			"GITHUB_TOKEN":             githubSecret.SecretArn(),
+			"APPLICATION_NAME":         jsii.String("LambdaDeployApp"),
+			"DEPLOYMENT_GROUP_NAME":    jsii.String("LambdaDeploymentGroup"),
+			"MAX_DEPLOYMENT_WAIT_TIME": jsii.String("300"), // 5 minutes in seconds
 		},
+		Tracing: awslambda.Tracing_ACTIVE,
 	})
 
 	// Create the Lambda alias for deployment
