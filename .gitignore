@@ -52,3 +52,6 @@ bin/.env
 
 // others
 others/*
+
+// code cdk.go
+bin/_cdk.go
