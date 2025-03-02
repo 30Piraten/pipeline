@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -35,6 +37,8 @@ func init() {
 	codeDeployClient = codedeploy.NewFromConfig(cfg)
 	codePipelineClient = codepipeline.NewFromConfig(cfg)
 	secretsManagerClient = secretsmanager.NewFromConfig(cfg)
+
+	log.Printf("Lambda initialization completed")
 }
 
 // CodePipelineEvent is the structure of the event received from CodePipeline
@@ -66,9 +70,17 @@ type S3Location struct {
 	ObjectKey  string `json:"objectKey"`
 }
 
-// Defined a maximum time to wait for deployment to complete (in seconds)
-// Depending on the results, might increase or decrease or leave constant!
-const maxWaitTimeSeconds = 300 // 5 minutes
+func getMaxWaitTime() int {
+	maxWaitTimeString := os.Getenv("MAX_DEPLOYMENT_WAIT_TIME")
+	if maxWaitTimeString != "" {
+		maxWaitTime, err := strconv.Atoi(maxWaitTimeString)
+		if err == nil && maxWaitTime > 0 {
+			return maxWaitTime
+		}
+		log.Printf("Warning: Invalud MAX_DEPLOYMENT_WAIT_TIME alue %s, using default", maxWaitTimeString)
+	}
+	return 600
+}
 
 // We retrieve the getGitHubToken from AWS Secrets Manager
 func getGitHubToken(ctx context.Context) (string, error) {
@@ -94,16 +106,32 @@ func getGitHubToken(ctx context.Context) (string, error) {
 func monitorDeployment(ctx context.Context, deploymentID string) error {
 	log.Printf("Monitoring deployment status for: %s", deploymentID)
 	startTime := time.Now()
-	endTime := startTime.Add(time.Second * maxWaitTimeSeconds)
+	maxWaitTime := getMaxWaitTime()
+	endTime := startTime.Add(time.Second * time.Duration(maxWaitTime))
+
+	// Initial wait time for exponential backoff
+	waitTime := 2 * time.Second
+	duration := 30 * time.Second
+	maxWaitTime = int(duration.Seconds())
+
+	attempt := 1
 
 	for time.Now().Before(endTime) {
 		input := &codedeploy.GetDeploymentInput{
 			DeploymentId: aws.String(deploymentID),
 		}
 
+		log.Printf("Checking deployment status (attempt %d): %s", attempt, deploymentID)
 		result, err := codeDeployClient.GetDeployment(ctx, input)
 		if err != nil {
-			return fmt.Errorf("failed to get deployment status: %v", err)
+
+			// Dont fail immediately on API errors, retry with backoff
+			if attempt < 3 {
+				time.Sleep(waitTime)
+				attempt++
+				continue
+			}
+			return fmt.Errorf("failed to get deployment status after %d attempts: %v", attempt, err)
 		}
 
 		status := result.DeploymentInfo.Status
@@ -114,21 +142,37 @@ func monitorDeployment(ctx context.Context, deploymentID string) error {
 		case types.DeploymentStatusSucceeded:
 			log.Printf("Deployment %s succeeded", deploymentID)
 			return nil
-		case types.DeploymentStatusFailed, types.DeploymentStatusStopped:
-			return fmt.Errorf("deployment %s ended with status: %s", deploymentID, status)
+		case types.DeploymentStatusFailed:
+			errInfo := "No error information available"
+			if result.DeploymentInfo.ErrorInformation != nil && result.DeploymentInfo.ErrorInformation.Message != nil {
+				errInfo = *result.DeploymentInfo.ErrorInformation.Message
+			}
+			return fmt.Errorf("deployment %s failed: %s", deploymentID, errInfo)
+		case types.DeploymentStatusStopped:
+			return fmt.Errorf("deployment %s stopped with status: %s", deploymentID, status)
 		}
 
-		// This takes the semblance of a loop.
-		// And waiting before checking again.
-		time.Sleep(15 * time.Second)
+		// Exponential backoff for the next attempt
+		waitTime = time.Duration(math.Min(float64(waitTime*2), float64(maxWaitTime)))
+		log.Printf("Waiting %v before next status check", waitTime)
+		time.Sleep(waitTime)
+		attempt++
 	}
 
 	return fmt.Errorf("timed out waiting for deployment %s to complete", deploymentID)
 }
 
 func handler(ctx context.Context, event CodePipelineEvent) error {
-	// We can also log the full event for debugging (testing).
-	// This isn't adviced for production stage.
+	// Logging sanitzed version of the event for debugging
+	sanitizedEventVersion := event
+	if len(sanitizedEventVersion.CodePipelineJob.Data.InputArtifacts) > 0 {
+		for i := range sanitizedEventVersion.CodePipelineJob.Data.InputArtifacts {
+			if len(sanitizedEventVersion.CodePipelineJob.Data.InputArtifacts[i].Revision) > 10 {
+				sanitizedEventVersion.CodePipelineJob.Data.InputArtifacts[i].Revision = sanitizedEventVersion.CodePipelineJob.Data.InputArtifacts[i].Revision[:10] + "..."
+			}
+		}
+	}
+
 	eventJSON, _ := json.MarshalIndent(event, "", "  ")
 	log.Printf("Received event: %s", eventJSON)
 
@@ -144,11 +188,16 @@ func handler(ctx context.Context, event CodePipelineEvent) error {
 	deploymentGroupName := os.Getenv("DEPLOYMENT_GROUP_NAME")
 
 	if applicationName == "" || deploymentGroupName == "" {
-		log.Printf("Missing required environment variables: APPLICATION_NAME=%s, DEPLOYMENT_GROUP_NAME=%s",
+		err := fmt.Errorf("missing required environment variables: APPLICATION_NAME=%s, DEPLOYMENT_GROUP_NAME=%s",
 			applicationName, deploymentGroupName)
+		log.Printf("%v", err)
 		reportFailure(ctx, jobID, "Missing required environment variables")
-		return nil
+		return err
 	}
+
+	// TODO: FINAL
+	// Create a pre-deployment validation Lambda hook
+	// Grant the CodeDeploy permissions to the hook function
 
 	// Here we extract the S3 artifact information
 	var s3BucketName, s3ObjectKey string
@@ -189,25 +238,36 @@ func handler(ctx context.Context, event CodePipelineEvent) error {
 		log.Println("Warning: No S3 location available for deployment, continuing without revision specification")
 	}
 
-	// We create the deployment
-	resp, err := codeDeployClient.CreateDeployment(ctx, deployInput)
-	if err != nil {
-		log.Printf("Failed to create deployment: %v", err)
-		reportFailure(ctx, jobID, fmt.Sprintf("Failed to create deployment: %v", err))
-		return nil
+	// We create the deployment with retry logic
+	var deploymentID string
+	for attempt := 1; attempt <= 3; attempt++ {
+		log.Printf("Creating deployment (attempt %d): %s", attempt, jobID)
+		resp, err := codeDeployClient.CreateDeployment(ctx, deployInput)
+		if err != nil {
+			log.Printf("Failed to create deployment: %v", err)
+			reportFailure(ctx, jobID, fmt.Sprintf("Failed to create deployment: %v", err))
+			if attempt == 3 {
+				reportFailureErr := fmt.Errorf("failed to create deployment after %d attempts: %v", attempt, err)
+				reportFailure(ctx, jobID, fmt.Sprintf("Failed to create deployment after %d attempts: %v", attempt, err))
+				return reportFailureErr
+			}
+			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+			continue
+		}
+		deploymentID := *resp.DeploymentId
+		log.Printf("Successfully created deployment: %s", deploymentID)
+		break
 	}
-
-	deploymentID := *resp.DeploymentId
-	log.Printf("Successfully created deployment: %s", deploymentID)
 
 	// And monitor the deployment until completion or timeout
 	err = monitorDeployment(ctx, deploymentID)
 	if err != nil {
 		log.Printf("Deployment monitoring failed: %v", err)
 		reportFailure(ctx, jobID, fmt.Sprintf("Deployment monitoring failed: %v", err))
-		return nil
+		return err
 	}
 
+	// The deployment is successful if we make it here
 	return reportSuccess(ctx, jobID)
 }
 
@@ -232,7 +292,6 @@ func reportFailure(ctx context.Context, jobID string, message string) {
 		JobId: aws.String(jobID),
 	})
 	if err != nil {
-		log.Printf("Failed to report failure to CodePipeline: %v", err)
 		log.Printf("Failed to report failure to CodePipeline: %v", err)
 	}
 	log.Printf("Successfully reported job failure to CodePipeline")
