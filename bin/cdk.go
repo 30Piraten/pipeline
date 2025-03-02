@@ -83,7 +83,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 		},
 	})
 
-	// Create the Lambda alias for production deployment
+	// Create the Lambda alias for deployment
 	lambdaAlias := awslambda.NewAlias(stack, jsii.String("production"), &awslambda.AliasProps{
 		AliasName:   jsii.String("Live"),
 		Description: jsii.String("Lambda Alias"),
@@ -302,7 +302,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 	return stack
 }
 
-// The main is the entry point of the CDK application
+// Main() is the entry point of the CDK application
 func main() {
 	defer jsii.Close()
 
