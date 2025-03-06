@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/codedeploy"
 	"github.com/aws/aws-sdk-go-v2/service/codedeploy/types"
 	"github.com/aws/aws-sdk-go-v2/service/codepipeline"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
 
@@ -24,6 +26,7 @@ var (
 	codeDeployClient     *codedeploy.Client
 	codePipelineClient   *codepipeline.Client
 	secretsManagerClient *secretsmanager.Client
+	s3Client             *s3.Client
 )
 
 // This init() function will run once Lambda starts
@@ -37,6 +40,7 @@ func init() {
 	codeDeployClient = codedeploy.NewFromConfig(cfg)
 	codePipelineClient = codepipeline.NewFromConfig(cfg)
 	secretsManagerClient = secretsmanager.NewFromConfig(cfg)
+	s3Client = s3.NewFromConfig(cfg)
 
 	log.Printf("Lambda initialization completed")
 }
@@ -77,7 +81,7 @@ func getMaxWaitTime() int {
 		if err == nil && maxWaitTime > 0 {
 			return maxWaitTime
 		}
-		log.Printf("Warning: Invalud MAX_DEPLOYMENT_WAIT_TIME alue %s, using default", maxWaitTimeString)
+		log.Printf("Warning: Invalid MAX_DEPLOYMENT_WAIT_TIME value %s, using default", maxWaitTimeString)
 	}
 	return 600
 }
@@ -111,8 +115,7 @@ func monitorDeployment(ctx context.Context, deploymentID string) error {
 
 	// Initial wait time for exponential backoff
 	waitTime := 2 * time.Second
-	duration := 30 * time.Second
-	maxWaitTime = int(duration.Seconds())
+	backoffMaxWaitTime := 30 * time.Second
 
 	attempt := 1
 
@@ -152,8 +155,8 @@ func monitorDeployment(ctx context.Context, deploymentID string) error {
 			return fmt.Errorf("deployment %s stopped with status: %s", deploymentID, status)
 		}
 
-		// Exponential backoff for the next attempt
-		waitTime = time.Duration(math.Min(float64(waitTime*2), float64(maxWaitTime)))
+		// Use exponential backoff for the next attempt
+		waitTime = time.Duration(math.Min(float64(waitTime*2), float64(backoffMaxWaitTime)))
 		log.Printf("Waiting %v before next status check", waitTime)
 		time.Sleep(waitTime)
 		attempt++
@@ -162,8 +165,204 @@ func monitorDeployment(ctx context.Context, deploymentID string) error {
 	return fmt.Errorf("timed out waiting for deployment %s to complete", deploymentID)
 }
 
+// runPreDeploymentValidation performs validation checks before deployment
+func runPreDeploymentValidation(ctx context.Context, applicationName, deploymentGroupName, s3BucketName, s3ObjectKey string) error {
+	log.Printf("Running pre-deployment validation for %s/%s", applicationName, deploymentGroupName)
+
+	// 1. Validate application and deployment group exist
+	_, err := codeDeployClient.GetDeploymentGroup(ctx, &codedeploy.GetDeploymentGroupInput{
+		ApplicationName:     aws.String(applicationName),
+		DeploymentGroupName: aws.String(deploymentGroupName),
+	})
+	if err != nil {
+		return fmt.Errorf("deployment group validation failed: %v", err)
+	}
+
+	// 2. Validate S3 artifact exists and is accessible
+	if s3BucketName != "" && s3ObjectKey != "" {
+		_, err := s3Client.HeadObject(ctx, &s3.HeadObjectInput{
+			Bucket: aws.String(s3BucketName),
+			Key:    aws.String(s3ObjectKey),
+		})
+		if err != nil {
+			return fmt.Errorf("artifact validation failed: %v", err)
+		}
+	}
+
+	// 3. Check if there's already an in-progress deployment for this group
+	listDeploymentsInput := &codedeploy.ListDeploymentsInput{
+		ApplicationName:     aws.String(applicationName),
+		DeploymentGroupName: aws.String(deploymentGroupName),
+		IncludeOnlyStatuses: []types.DeploymentStatus{
+			types.DeploymentStatusCreated,
+			types.DeploymentStatusQueued,
+			types.DeploymentStatusInProgress,
+		},
+	}
+
+	listResult, err := codeDeployClient.ListDeployments(ctx, listDeploymentsInput)
+	if err != nil {
+		log.Printf("Warning: Could not check for in-progress deployments: %v", err)
+	} else if len(listResult.Deployments) > 0 {
+		log.Printf("Warning: There are %d in-progress deployments for this group", len(listResult.Deployments))
+	}
+
+	// 4. Validate any custom pre-deployment requirements
+	// This could include checking infrastructure readiness, database status, etc.
+	// For example:
+	err = validateRequiredInfrastructure(ctx, applicationName)
+	if err != nil {
+		return fmt.Errorf("infrastructure validation failed: %v", err)
+	}
+
+	log.Printf("Pre-deployment validation completed successfully")
+	return nil
+}
+
+// validateRequiredInfrastructure checks if required infrastructure is available
+func validateRequiredInfrastructure(ctx context.Context, applicationName string) error {
+	// Get the health check URL from environment variables
+	healthCheckURL := os.Getenv("HEALTH_CHECK_URL")
+	if healthCheckURL == "" {
+		log.Printf("No health check URL configured, skipping infrastructure validation")
+		return nil
+	}
+
+	// Perform a simple health check
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", healthCheckURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create health check request: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("health check failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("health check returned non-success status code: %d", resp.StatusCode)
+	}
+
+	log.Printf("Infrastructure validation succeeded: health check returned %d", resp.StatusCode)
+	return nil
+}
+
+// runPostDeploymentValidation performs validation checks after deployment
+func runPostDeploymentValidation(ctx context.Context, applicationName, deploymentGroupName, deploymentID string) error {
+	log.Printf("Running post-deployment validation for deployment: %s", deploymentID)
+
+	// 1. Get deployment information to find deployment targets
+	deploymentInfo, err := codeDeployClient.GetDeployment(ctx, &codedeploy.GetDeploymentInput{
+		DeploymentId: aws.String(deploymentID),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get deployment info: %v", err)
+	}
+
+	// 2. Verify deployment succeeded on all targets
+	targetsInput := &codedeploy.ListDeploymentTargetsInput{
+		DeploymentId: aws.String(deploymentID),
+	}
+
+	targetsResult, err := codeDeployClient.ListDeploymentTargets(ctx, targetsInput)
+	if err != nil {
+		return fmt.Errorf("failed to list deployment targets: %v", err)
+	}
+
+	// 3. Check each target's status
+	for _, targetId := range targetsResult.TargetIds {
+		targetInfo, err := codeDeployClient.GetDeploymentTarget(ctx, &codedeploy.GetDeploymentTargetInput{
+			DeploymentId: aws.String(deploymentID),
+			TargetId:     aws.String(targetId),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get target info for %s: %v", targetId, err)
+		}
+
+		// Check if this target succeeded
+		if targetInfo.DeploymentTarget.InstanceTarget != nil &&
+			targetInfo.DeploymentTarget.InstanceTarget.Status != "Succeeded" {
+			return fmt.Errorf("deployment failed on target %s with status: %s",
+				targetId, targetInfo.DeploymentTarget.InstanceTarget.Status)
+		}
+	}
+
+	// 4. Perform application-specific health checks
+	err = validateApplicationHealth(ctx)
+	if err != nil {
+		return fmt.Errorf("application health validation failed: %v", err)
+	}
+
+	log.Printf("Post-deployment validation completed successfully")
+
+	log.Printf("Deployment %s succeeded", deploymentID)
+	log.Printf("DeploymentInfo %v", deploymentInfo)
+
+	return nil
+}
+
+// validateApplicationHealth checks if the application is healthy after deployment
+func validateApplicationHealth(ctx context.Context) error {
+	// Get the application health check URL from environment variables
+	appHealthCheckURL := os.Getenv("APP_HEALTH_CHECK_URL")
+	if appHealthCheckURL == "" {
+		log.Printf("No application health check URL configured, skipping application health validation")
+		return nil
+	}
+
+	// Number of retries for health check
+	maxRetries := 3
+
+	// Wait time between retries
+	retryWaitTime := 5 * time.Second
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	var lastErr error
+
+	// Retry the health check a few times to allow the application to start up
+	for i := 0; i < maxRetries; i++ {
+		req, err := http.NewRequestWithContext(ctx, "GET", appHealthCheckURL, nil)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create health check request: %v", err)
+			continue
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("health check failed (attempt %d): %v", i+1, err)
+			log.Printf("%v, retrying in %v", lastErr, retryWaitTime)
+			time.Sleep(retryWaitTime)
+			continue
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			lastErr = fmt.Errorf("health check returned non-success status code (attempt %d): %d", i+1, resp.StatusCode)
+			log.Printf("%v, retrying in %v", lastErr, retryWaitTime)
+			time.Sleep(retryWaitTime)
+			continue
+		}
+
+		// If we got here, the health check succeeded
+		log.Printf("Application health check succeeded: status code %d", resp.StatusCode)
+		return nil
+	}
+
+	// If we got here, all retries failed
+	return fmt.Errorf("application health validation failed after %d attempts: %v", maxRetries, lastErr)
+}
+
 func handler(ctx context.Context, event CodePipelineEvent) error {
-	// Logging sanitzed version of the event for debugging
+	// Logging sanitized version of the event for debugging
 	sanitizedEventVersion := event
 	if len(sanitizedEventVersion.CodePipelineJob.Data.InputArtifacts) > 0 {
 		for i := range sanitizedEventVersion.CodePipelineJob.Data.InputArtifacts {
@@ -195,10 +394,6 @@ func handler(ctx context.Context, event CodePipelineEvent) error {
 		return err
 	}
 
-	// TODO: FINAL
-	// Create a pre-deployment validation Lambda hook
-	// Grant the CodeDeploy permissions to the hook function
-
 	// Here we extract the S3 artifact information
 	var s3BucketName, s3ObjectKey string
 	if len(event.CodePipelineJob.Data.InputArtifacts) > 0 {
@@ -215,6 +410,14 @@ func handler(ctx context.Context, event CodePipelineEvent) error {
 	_, err := getGitHubToken(ctx)
 	if err != nil {
 		log.Printf("Warning: Failed to get GitHub token: %v", err)
+	}
+
+	// Run pre-deployment validation
+	err = runPreDeploymentValidation(ctx, applicationName, deploymentGroupName, s3BucketName, s3ObjectKey)
+	if err != nil {
+		log.Printf("Pre-deployment validation failed: %v", err)
+		reportFailure(ctx, jobID, fmt.Sprintf("Pre-deployment validation failed: %v", err))
+		return err
 	}
 
 	// Create deployment request
@@ -245,7 +448,6 @@ func handler(ctx context.Context, event CodePipelineEvent) error {
 		resp, err := codeDeployClient.CreateDeployment(ctx, deployInput)
 		if err != nil {
 			log.Printf("Failed to create deployment: %v", err)
-			reportFailure(ctx, jobID, fmt.Sprintf("Failed to create deployment: %v", err))
 			if attempt == 3 {
 				reportFailureErr := fmt.Errorf("failed to create deployment after %d attempts: %v", attempt, err)
 				reportFailure(ctx, jobID, fmt.Sprintf("Failed to create deployment after %d attempts: %v", attempt, err))
@@ -254,16 +456,31 @@ func handler(ctx context.Context, event CodePipelineEvent) error {
 			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
 			continue
 		}
-		deploymentID := *resp.DeploymentId
+		deploymentID = *resp.DeploymentId
 		log.Printf("Successfully created deployment: %s", deploymentID)
 		break
 	}
 
-	// And monitor the deployment until completion or timeout
+	// If we failed to create a deployment, report failure
+	if deploymentID == "" {
+		err := fmt.Errorf("failed to create deployment")
+		reportFailure(ctx, jobID, "Failed to create deployment")
+		return err
+	}
+
+	// Monitor the deployment until completion or timeout
 	err = monitorDeployment(ctx, deploymentID)
 	if err != nil {
 		log.Printf("Deployment monitoring failed: %v", err)
 		reportFailure(ctx, jobID, fmt.Sprintf("Deployment monitoring failed: %v", err))
+		return err
+	}
+
+	// Run post-deployment validation
+	err = runPostDeploymentValidation(ctx, applicationName, deploymentGroupName, deploymentID)
+	if err != nil {
+		log.Printf("Post-deployment validation failed: %v", err)
+		reportFailure(ctx, jobID, fmt.Sprintf("Post-deployment validation failed: %v", err))
 		return err
 	}
 

@@ -91,6 +91,8 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			"APPLICATION_NAME":         jsii.String("LambdaDeployApp"),
 			"DEPLOYMENT_GROUP_NAME":    jsii.String("LambdaDeploymentGroup"),
 			"MAX_DEPLOYMENT_WAIT_TIME": jsii.String("600"), // 6 minutes in seconds
+			// "HEALTH_CHECK_URL":         TODO,
+			// "APP_HEALTH_CHECK_URL":     TODO,
 		},
 		Tracing: awslambda.Tracing_ACTIVE,
 	})
@@ -137,7 +139,6 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			DeploymentInAlarm: jsii.Bool(true),
 		},
 		Alarms: &[]awscloudwatch.IAlarm{lambdaErrorsAlarm},
-		// PreHook: preTrafficHook, -> TODO!
 	})
 
 	// Lambda IAM role definition
@@ -369,8 +370,7 @@ func NewPipelineBuildV1(scope constructs.Construct, id string, props *PipelineBu
 			"codedeploy:GetDeploymentConfig",
 			"codedeploy:GetDeployment",
 		),
-		Resources: jsii.Strings(fmt.Sprintf("arn:aws:codedeploy:%s:%s:%sdeploymentconfig:*", *stack.Region(), *stack.Account())),
-	}))
+		Resources: jsii.Strings(fmt.Sprintf("arn:aws:codedeploy:%s:%s:deploymentconfig:*", *stack.Region(), *stack.Account()))}))
 
 	codePipelineRoleV1.AddToPolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
 		Effect: awsiam.Effect_ALLOW,
