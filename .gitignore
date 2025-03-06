@@ -58,3 +58,7 @@ bin/_cdk.go
 
 // extras
 extras/*
+
+// test
+bin/test.go 
+bin/test2.go
